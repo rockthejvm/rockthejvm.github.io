@@ -12,7 +12,11 @@ toc_label: "In this article"
 _by [Herbert Kateu](https://github.com/hkateu)_
 
 ## 1. Introduction
-This article is a follow-up from the [websocket](https://blog.rockthejvm.com/websockets-in-http4s/) article that was published previously, in this iteration we'll be integrating Redis to keep track of the users and rooms and we'll also be persisting messages in Postgres so that new users can have access to previous conversations. Finally, We'll get rid of `chatState` and create a new protocol that interacts with Postgres and Redis.
+This article is a follow-up to the [websocket](https://blog.rockthejvm.com/websockets-in-http4s/) article that was published previously. To recap, we created an in-memory chat application using WebSockets with the help of the Http4s library. The chat application had a variety of features implemented through commands directly in the chat window such as the ability to create users, create chat rooms, and switch between chat rooms. 
+
+In this iteration, we'll be integrating Redis to keep track of the users and rooms and we'll also be persisting messages in Postgres so that new users can have access to previous conversations. Finally, We'll get rid of `chatState` and create a new protocol that interacts with Postgres and Redis.
+
+Since this tutorial builds on the previous article, to follow along, we'll need to clone that [GitHub repo](https://github.com/hkateu/WebsocketChatApp) where we'll be making the necessary updates to build this new version.
 
 ## 2. Setting Up
 We'll be using skunk and redis4Cats in our application so let's add them to our `build.sbt` file.
@@ -1275,14 +1279,11 @@ new ChatProtocol[F] {
       case Some(roomid) =>
         redisP.listUserIds(roomid).flatMap { u =>
           redisP.getSelectedUsers(u.toList.head, u.toList.tail).map {
-            maybelist =>
-              maybelist match {
-                case Some(lu) =>
-                  lu.map(_.name.name)
-                    .sorted
-                    .mkString("Room Members:\n\t", "\n\t", "")
-                case None => ""
-              }
+            case Some(lu) =>
+              lu.map(_.name.name)
+                .sorted
+                .mkString("Room Members:\n\t", "\n\t", "")
+            case None => ""
           }
         }
       case None => "You are not currently in a room".pure[F]
