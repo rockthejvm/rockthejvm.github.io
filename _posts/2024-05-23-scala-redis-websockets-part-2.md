@@ -158,7 +158,8 @@ object message {
 ```
 The `FetchMessage` case class contains a `MessageText` and a `User` from whom the `message` was sent. The reason we need another case class is that only want to fetch two columns from Postgres.
 
-## 4. Docker
+## 4. Docker for Redis and PostgreSQL
+
 We'll be using Docker images for Redis and Postgres. To follow along, you'll need [Docker](https://www.docker.com) and [Docker Compose](https://docs.docker.com/compose/) installed. We can install them by installing [Docker desktop](https://www.docker.com/products/docker-desktop/) on your system.
 
 After installation, we can check if we have everything installed by running the following:
@@ -196,8 +197,7 @@ CREATE TABLE messages (
 ```
 The first command creates a database called `websocket`, `\c websocket` connects to it, then we create a `users` and `rooms` table each with an `id` of type `UUID` and `name` of type `VARCHAR(255)`, and finally we create the messages table with an `id`, `message` and `time` columns and it also references the `users` and `rooms` table `id`.
 
-### 4.1 Docker-Compose
-In this section, we'll manage our docker stack using docker-compose. Let's create a `docker-compose.yaml` file in the root folder of our application and add the following:
+Then we need manage our docker stack using docker-compose. Let's create a `docker-compose.yaml` file in the root folder of our application and add the following:
 
 ```yaml
 services:
@@ -254,7 +254,8 @@ Then connect to the database and finally list the tables by running the followin
 $ \c websocket
 $ \d
 ```
-## 5. Skunk
+## 5. Skunk for PostgreSQL Integration
+
 In this section, we'll implement the protocols necessary for interacting with Postgres in our application using [Skunk](https://blog.rockthejvm.com/skunk-complete-guide/).
 
 First, we'll need to implement `Codec`s for the types in our domain. Create a `codecs.scala` file in the following path, `src/main/scala/rockthejvm/websockets/codecs/codecs.scala` and add the following code:
@@ -294,9 +295,7 @@ Skunk provides several important codecs through the `skunk.codec.all.*` import s
 ```
 Here we provide the methods from case class to postgres and the reverse. Here we provide codecs for case classes that take native types, however, later we shall see how to join codecs for types such as `InsertMessage`.
 
-### 5.1 The Postgres Protocols
-
-In this section, we'll create various methods that will interact with the Postgres database through `Skunk`. Let's create a `PostgresProtocol.scala` file under the `websockets` and add the following code:
+Now we'll create various methods that will interact with the Postgres database through `Skunk`. Let's create a `PostgresProtocol.scala` file under the `websockets` and add the following code:
 
 ```scala
 package rockthejvm.websockets
@@ -621,7 +620,8 @@ new PostgresProtocol[F] {
 }.pure[F]
 ```
 
-## 6. The Redis and Chat Protocols
+## 6. Redis and Chat Protocols
+
 Before we dive into the Redis implementation, we'll need an overview of how the schema will be. 
 A Redis hash is a record type structured as a collection of field-value pairs, we'll need the following hashes for our application:
 
@@ -717,7 +717,8 @@ object ChatProtocol {
 }
 ```
 
-### 6.1. The register() Function
+### 6.1. Registering Users
+
 Let's start with the `register()` function in `ChatProtocol`. To register someone, we'll need to first check if the user name exists in Redis, then add it to both the Redis and Postgres databases:
 
 ```scala
@@ -812,7 +813,8 @@ We start by checking if the user name exists in Redis, if this is true we return
 
 If the creation was successful, we also create the user in Redis by calling `redisP.createUser(u)` which returns `SuccessfulRegistration(u).pure[F]`. In case of an error we return, `ParsingError(None, err).pure[F]`.
 
-### 6.2. The enterroom() Function
+### 6.2. Entering a Room
+
 To enter a room, we'll need to first get the user's current room, and then make the transfer to the new room. We'll receive the room name inform of a `String`, which we'll use to check against the Redis database:
 
 ```scala
@@ -906,7 +908,8 @@ We start by calling `redisP.getRoomFromName(room)`, if the room exists, we compa
 If the user doesn't have a `RoomId`, we add the user to the requested room by calling `addToRoom(redisP, postgresP, user, r)`.
 Now, if the room name doesn't exist, we create that room by calling `createRoom(redisP, postgresP, room)`, then transfer the user to the new room.
 
-### 6.3. The transferUserToRoom() Function
+### 6.3. Moving to Another Room
+
 This is a private function, that transfers the user to a new room:
 
 ```scala
@@ -928,7 +931,8 @@ object ChatProtocol {
 ```
 To do this we remove the user from the current room by calling `removeFromCurrentRoom()`, then add the user to the requested room by calling `addToRoom(redisP, postgresP, user, room)`. This happens both in Redis and Postgres to keep everything in sync.
 
-### 6.4. The removeFromCurrentRoom() Function
+### 6.4. Removing a User from a Room
+
 To remove a user from the current room, we'll need to remove the user from the Redis `room:<roomid>` set and remove the entry from the `userroomid` hash. 
 
 Note that in Redis when the last member is deleted from a set, the entire set is deleted, therefore if this occurs, we'll also need to update the `rooms` hash:
@@ -1016,7 +1020,8 @@ Here we start by getting the user's current roomid by calling `redisP.getUsersRo
 1. We also delete the entry from `userroomid` by calling r`edisP.deleteUserRoomMapping(user.id)`
 1. Finally we tell the old room member that the user has left the room.
 
-### 6.5. The broadcastMessage() Function
+### 6.5. Broadcasting a Message
+
 To broadcast messages to members in a room, we first need to retrieve a list of user ids from a `room:<roomid>` set:
 ```scala
 new RedisProtocol[F] {
@@ -1105,7 +1110,8 @@ We start by getting a list of user ids by calling `redisP.listUserIds(roomid)`, 
 
 Otherwise, we retrieve the list of `User`s by calling `redisP.getSelectedUsers(userlist.head, userlist.tail)`. The rest of the implementation hasn't changed from before.
 
-### 6.6. The addToRoom() Function
+### 6.6. Adding a User to a Room
+
 This function adds a user to a room, however, in Redis we'll need to add the user id to the `room:<roomid>` set, and add the `userid -> roomid` pair to the `userroomid` hash:
 
 ```scala
@@ -1163,7 +1169,7 @@ Here we add the user to the `room:<roomid>` set, then add the pair to the `userr
 
 We then inform all the room members that the new user has joined the room and pass all the previous messages to the new user.
 
-### 6.7. The fetchRoomMessages() Function
+### 6.7. Fetching Current Messages
 
 ```scala
 object ChatProtocol {
@@ -1184,7 +1190,8 @@ object ChatProtocol {
 ```
 To fetch messages from Postgres, we call `postgresP.fetchMessages(roomid)`, this returns an `F[Stream[F, FetchMessage]]` which we map on to convert to `ChatMsg`, we then compile to list to return an `F[List[OutputMessage]]`.
 
-### 6.8. The createRoom() Function
+### 6.8. Creating a Chat Room
+
 We already looked at the `createRoom()` redis implementation in the `register()` function section, now let's look at how to implement it in `ChatProtocol`:
 
 ```scala
@@ -1205,7 +1212,8 @@ object ChatProtocol {
 ```
 Here we start by calling `postgresP.createRoom(room)` which returns an `F[Either[String, Room]]`, if the creation is successful, we call `redisP.createRoom(r)` then return a `Right(r)` otherwise we return a `Left(err)`.
 
-### 6.9. The chat() Function
+### 6.9. Sending Messages
+
 When we receive a chat message, we'll need to save it into Postgres and then broadcast it:
 
 ```scala
@@ -1226,7 +1234,8 @@ new ChatProtocol[F] {
 ```
 We start by getting the user's roomid, then calling `postgresP.saveMessage()` followed by the `broadcastMessage()` function. In case the user has no room id, we inform the user by returning `List(SendToUser(user, "You are not currently in a room")).pure[F]`.
  
-### 6.10. The help() Function
+### 6.10. The Help Prompt
+
 The implementation of this function remains unchanged from before:
 
 ```scala
@@ -1244,7 +1253,8 @@ new ChatProtocol[F] {
 }.pure[F]
 ```
 
-### 6.11. The listRooms Function
+### 6.11. Listing Rooms
+
 Here we'll need to retrieve a list of rooms from Redis:
 ```scala
 new RedisProtocol[F] {
@@ -1269,7 +1279,8 @@ new ChatProtocol[F] {
 ```
 The `listRooms` `ChatProtocol[F]` method starts by calling `redisP.listRooms` function, then we sort and make a String from the resulting list and finally pass this value to the `SendToUser()` apply method.
 
-### 6.12. The listMembers() Function
+### 6.12. Listing Members
+
 This function gets the list of users in the room the user is in.
 ```scala
 new ChatProtocol[F] {
@@ -1298,7 +1309,8 @@ Otherwise, we pass the roomid to `redisP.listUserIds(roomid)` to get a list of m
 
 Finally, we produce a string of user names which we sequentially pass to the `SendToUser()` apply method
 
-### 6.13. The disconnect() Function
+### 6.13. Disconnecting
+
 We'll need to be able to remove a user from the `users` hash in Redis before we implement disconnect:
 
 ```scala
@@ -1329,7 +1341,8 @@ new ChatProtocol[F] {
 ```
 We first delete the user from Postgres and Redis by calling `postgresP.deleteUser(user.id)` and `redisP.deleteUser(user.id)` then we finally call `removeFromCurrentRoom()` to remove the user from the current room.
 
-### 6.14. The chatState() Function
+### 6.14. Getting State 
+
 This is the last function to implement, however, to get an overview from Redis, quite a lot has to be done:
 
 ```scala
@@ -1392,7 +1405,8 @@ new ChatProtocol[F] {
 ```
 Lastly in ChatProtocol, we simply call `redisP.chatState`
 
-## 7. InputMessage
+## 7. Getting Input
+
 Let's create an `InputMessage.scala` file in the websocket folder and add the following contents:
 
 ```scala
@@ -1555,7 +1569,8 @@ object InputMessage {
 ```
 The `procesText4Reg()` function also remains unchanged except for the new `ChatProtocol[F]` methods
 
-## 8. Routes
+## 8. The Web App Routes
+
 In this section we'll continue to upgrade our application to the new `ChatProtocol[F]`:
 
 ```scala
@@ -1730,7 +1745,8 @@ class Routes[F[_]: Files: Temporal] extends Http4sDsl[F] {
 ```
 The rest of the above 3 functions also remain unchanged.
 
-## 9. Server
+## 9. The Server
+
 The server function is also now uses `ChatProtocol[F]`:
 
 ```scala
@@ -1768,7 +1784,8 @@ object Server {
 }
 ```
 
-## 10. Program
+## 10. The Main Program
+
 In this section, we have several updates that involve initializing Redis and Postgres:
 
 ```scala
@@ -1848,7 +1865,8 @@ object Program extends IOApp.Simple {
 ```
 Finally, in the `program` function, we took out `ChatState` and `Protocol` and added the `PostgresProtocol` and `RedisProtocol` which we provide as arguments to the `ChatProtocol` `make()` function.
 
-## 11. chat.html
+## 11. Serving HTML
+
 Since we upgraded the `User` case class, we'll also need to make changes to `chat.html`:
 
 ```javascript
@@ -1865,6 +1883,7 @@ In the `obj.ChatMsg` branch we now add `obj.ChatMsg.from.name.name` to access th
 Now to run our application, we first need to start our Redis and Postgres Docker containers using Docker-Compose, and finally our application server. The application should function closely to the original.
 
 ## 12. Conclusion
+
 In conclusion, this article has gone in-depth on how to implement Redis and Postgres in a Scala application using the redis4cats and skunk libraries. Now we can persist our messages, and rip all the benefits of storing our information in Redis such as high availability and persistence. 
 
 In this version we simply dump all the previous messages to the new user but this should be done progressively whenever the user scrolls up, however, this was beyound the scope of this tutorial.
