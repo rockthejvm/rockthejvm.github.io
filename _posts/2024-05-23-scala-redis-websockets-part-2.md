@@ -1,10 +1,10 @@
 ---
-title: "WebSockets part2: Implementing Redis and Postgres"
-date: 2024-04-20
+title: "WebSockets in Scala, Part 2: Integrating Redis and PostgreSQL"
+date: 2024-05-23
 header:
   image: "/images/blog cover.jpg"
 tags: []
-excerpt: "Learn how to use Redis in Scala using redis4cats and persist records on Postgres using skunk."
+excerpt: "Learn how to use Redis in Scala using redis4cats and persist records on Postgres using skunk, adding new functionality to our chatroom application"
 toc: true
 toc_label: "In this article"
 ---
