@@ -15,7 +15,7 @@ _This article is brought to you by [Herbert Kateu](https://github.com/hkateu), a
 
 With the growing number of cyber-attacks ever increasing, there's a growing need for security in the applications we build.
 Http4s comes with several easily configurable security features and in this article, we will cover the two most common, CORS and CSRF.
-If you are not familiar with http4s, a good introduction to the library can be found [here](https://blog.rockthejvm.com/http4s-tutorial/)
+If you are not familiar with http4s, a good introduction to the library can be found [here](/http4s-tutorial/)
 
 ## 2. Setting Up
 

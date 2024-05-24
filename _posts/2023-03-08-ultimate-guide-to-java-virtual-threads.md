@@ -66,7 +66,7 @@ module virtual.threads.playground {
 
 ## 2. Why Virtual Threads?
 
-For people who already follow us, we asked the same question in the article on [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/). However, it is essential to briefly introduce the problem virtual threads are trying to solve.
+For people who already follow us, we asked the same question in the article on [Kotlin Coroutines](/kotlin-coroutines-101/). However, it is essential to briefly introduce the problem virtual threads are trying to solve.
 
 The JVM is a multithreaded environment. As we may know, the JVM gives us an abstraction of OS threads through the type `java.lang.Thread`. **Until Project Loom, every thread in the JVM is just a little wrapper around an OS thread**. We can call the such implementation of the `java.lang.Thread` type as _platform thread_.
 
@@ -355,7 +355,7 @@ final class VirtualThread extends BaseVirtualThread {
 
 Configuring the pool dedicated to carrier threads is possible using the above system properties. The default pool size (parallelism) equals the number of CPU cores, and the maximum pool size is at most 256. The minimum number of core threads not blocked allowed is half the pool size.
 
-In Java, **virtual threads implement cooperative scheduling**. As we saw for [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/#6-cooperative-scheduling), it's a virtual thread that decides when to yield the execution to another virtual thread. In detail, the control is passed to the scheduler, and **the virtual thread is _unmounted_ from the carrier thread** when it reaches a blocking operation.
+In Java, **virtual threads implement cooperative scheduling**. As we saw for [Kotlin Coroutines](/kotlin-coroutines-101/#6-cooperative-scheduling), it's a virtual thread that decides when to yield the execution to another virtual thread. In detail, the control is passed to the scheduler, and **the virtual thread is _unmounted_ from the carrier thread** when it reaches a blocking operation.
 
 We can empirically verify this behavior using the `sleep()` method and the above system properties. First, let's define a function creating a virtual thread that contains an infinite loop. Let's say we want to model an employee that is working hard on a task:
 
@@ -702,7 +702,7 @@ In this section, we'll introduce the implementation of continuation in Java virt
 
 A virtual thread cannot run itself, but it stores the information of what must be run. In other words, **it's a pointer to the advance of an execution that can be yielded and resumed later**.
 
-The above is the definition of _continuations_. We've already seen how Kotlin coroutines implement continuations ([Kotlin Coroutines - A Comprehensive Introduction - Suspending Functions](https://blog.rockthejvm.com/kotlin-coroutines-101/#3-suspending-functions)). In that case, the Kotlin compiler generates continuation from the coroutine code. Kotlin's coroutines have no direct support in the JVM, so they are supported using code generation by the compiler.
+The above is the definition of _continuations_. We've already seen how Kotlin coroutines implement continuations ([Kotlin Coroutines - A Comprehensive Introduction - Suspending Functions](/kotlin-coroutines-101/#3-suspending-functions)). In that case, the Kotlin compiler generates continuation from the coroutine code. Kotlin's coroutines have no direct support in the JVM, so they are supported using code generation by the compiler.
 
 However, for virtual threads, we have the JVM support directly. So, continuations execution is implemented using a lot of native calls to the JVM, and it's less understandable when looking at the JDK code. However, we can still look at some concepts at the roots of virtual threads.
 

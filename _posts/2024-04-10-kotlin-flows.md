@@ -15,7 +15,7 @@ Video version:
 
 {% include video id="p6SagGRLYaE" provider="youtube" %}
 
-In the article [Kotlin Coroutines—A Comprehensive Introduction](https://blog.rockthejvm.com/kotlin-coroutines-101/), we saw how to use Kotlin Coroutines to write asynchronous code in a more natural and readable way. This article will focus on another crucial concept in Kotlin Coroutines: Kotlin flows. Flows are a data structure you didn't know, but you can't live without them once you know them. So, without further ado, let's dive into Kotlin Flows.
+In the article [Kotlin Coroutines—A Comprehensive Introduction](/kotlin-coroutines-101/), we saw how to use Kotlin Coroutines to write asynchronous code in a more natural and readable way. This article will focus on another crucial concept in Kotlin Coroutines: Kotlin flows. Flows are a data structure you didn't know, but you can't live without them once you know them. So, without further ado, let's dive into Kotlin Flows.
 
 ## 1. Setting the Stage
 
@@ -29,7 +29,7 @@ dependencies {
 
 As usual, the complete Gradle file to run the examples is included at the end of the article.
 
-Kotlin flows can be compared to the Typelevel FS2 library in Scala. We already discussed FS2 in the article [FS2 Tutorial: More than Functional Streaming in Scala](https://blog.rockthejvm.com/fs2/), and to help developers who are familiar with FS2 understand the concept of Kotlin flows, we'll use the same examples as in the FS2 article.
+Kotlin flows can be compared to the Typelevel FS2 library in Scala. We already discussed FS2 in the article [FS2 Tutorial: More than Functional Streaming in Scala](/fs2/), and to help developers who are familiar with FS2 understand the concept of Kotlin flows, we'll use the same examples as in the FS2 article.
 
 Our domain will be an application faking the IMDb website. We'll focus on the actors playing movies. So, first of all, let's define the `Actor` type:
 
@@ -815,7 +815,7 @@ coroutineScope {
 }
 ```
 
-Now, the flow is collected inside a dedicated coroutine spawned by the `launch` coroutine builder (if you want to deep dive into the coroutines world, please refer to the article [Kotlin Coroutines - A Comprehensive Introduction](https://blog.rockthejvm.com/kotlin-coroutines-101/)). The program will not wait for the whole collection of the flow to complete before printing the string "After Zack Snyder's Justice League". The output of the program is:
+Now, the flow is collected inside a dedicated coroutine spawned by the `launch` coroutine builder (if you want to deep dive into the coroutines world, please refer to the article [Kotlin Coroutines - A Comprehensive Introduction](/kotlin-coroutines-101/)). The program will not wait for the whole collection of the flow to complete before printing the string "After Zack Snyder's Justice League". The output of the program is:
 
 ```
 Before Zack Snyder's Justice League
@@ -1290,7 +1290,7 @@ Justice League
 
 We've got the same result as the `flatMapConcat` function.
 
-**The `flatMapMerge` function is handy when dealing with I/O operations on a collection of information**. We can set the concurrency level to the number of available processors to maximize the program's performance or even to fine-tune the maximum level of resources we want to use. Another approach is using the [`async` coroutine builder](https://blog.rockthejvm.com/kotlin-coroutines-101/#52-the-async-builder) for each value in the collection:
+**The `flatMapMerge` function is handy when dealing with I/O operations on a collection of information**. We can set the concurrency level to the number of available processors to maximize the program's performance or even to fine-tune the maximum level of resources we want to use. Another approach is using the [`async` coroutine builder](/kotlin-coroutines-101/#52-the-async-builder) for each value in the collection:
 
 ```kotlin
 coroutineScope {
@@ -1376,7 +1376,7 @@ val flow: suspend (FlowCollector) -> Unit = {
 flow { println(it) } // <- Possible because of the SAM interface
 ```
 
-Since we don't like to call the `emit` function on the `it` reference, we can change the definition of the `flow` function again. We aim to create a smoother DSL, letting us call the `emit` function directly. Then, we must make the `FlowCollector` instance available as the `this` reference inside the lambda. Using the `FlowCollector` interface as the receiver of the lambda does the trick (if you want to deepen your knowledge about Kotlin receivers, please refer to the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/)):
+Since we don't like to call the `emit` function on the `it` reference, we can change the definition of the `flow` function again. We aim to create a smoother DSL, letting us call the `emit` function directly. Then, we must make the `FlowCollector` instance available as the `this` reference inside the lambda. Using the `FlowCollector` interface as the receiver of the lambda does the trick (if you want to deepen your knowledge about Kotlin receivers, please refer to the article [Kotlin Context Receivers: A Comprehensive Guide](/kotlin-context-receivers/)):
 
 ```kotlin
 val flow: suspend FlowCollector.() -> Unit = {

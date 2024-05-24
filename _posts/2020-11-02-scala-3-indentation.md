@@ -105,7 +105,7 @@ def computeMeaningOfLife(year: Int): Int =
 
 This part may be particularly confusing. The way I like to talk about it is: imagine the compiler inserted braces between `=` and your returned value; in this way, the implementation of the method is a _code block_, which, obviously, is a single expression whose value is given by its last constituent expression. The significant indentation means, in this case, that we actually have an invisible code block there.
 
-An indentation region is also created when we define classes, traits, objects or [enums](https://blog.rockthejvm.com/enums-scala-3/) followed by a colon `:` and a line break. This token is now interpreted by the compiler as "colon at end of line", which is to say "colon then define everything indented". Examples:
+An indentation region is also created when we define classes, traits, objects or [enums](/enums-scala-3/) followed by a colon `:` and a line break. This token is now interpreted by the compiler as "colon at end of line", which is to say "colon then define everything indented". Examples:
 
 ```scala3
 class Animal:

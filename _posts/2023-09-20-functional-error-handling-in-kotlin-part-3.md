@@ -11,10 +11,10 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-It's time to end our journey on functional error handling in Kotlin with the new features introduced by the Arrow library in version 1.2.0, which previews the significant rewrite we'll have in version 2.0.0. We'll mainly focus on the `Raise` DSL, a new way to handle typed errors using [Kotlin contexts](https://blog.rockthejvm.com/kotlin-context-receivers/). This article is part of a series. We can always reference the previous parts using these links:
+It's time to end our journey on functional error handling in Kotlin with the new features introduced by the Arrow library in version 1.2.0, which previews the significant rewrite we'll have in version 2.0.0. We'll mainly focus on the `Raise` DSL, a new way to handle typed errors using [Kotlin contexts](/kotlin-context-receivers/). This article is part of a series. We can always reference the previous parts using these links:
 
-* [Functional Error Handling in Kotlin, Part 1: Absent values, Nullables, Options](https://blog.rockthejvm.com/functional-error-handling-in-kotlin/)
-* [Functional Error Handling in Kotlin, Part 2: Result and Either](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-2/)
+* [Functional Error Handling in Kotlin, Part 1: Absent values, Nullables, Options](/functional-error-handling-in-kotlin/)
+* [Functional Error Handling in Kotlin, Part 2: Result and Either](/functional-error-handling-in-kotlin-part-2/)
 
 For the video version, watch here:
 
@@ -28,7 +28,7 @@ Without further ado, let's start!
 
 We'll use version 1.9.0 of Kotlin and version 1.2.0 of the Arrow library. In fact, the Raise DSL is not available in previous versions of Arrow.
 
-Since the context receivers are still experimental, we must explicitly enable them. In the article [Kotlin contexts](https://blog.rockthejvm.com/kotlin-context-receivers/), we saw how to enable context receivers using Gradle. This time, we see how to do it in Maven. We need to pass the property `-Xcontext-receivers` to the `kotlin-maven-plugin` using the appropriate `configuration` element:
+Since the context receivers are still experimental, we must explicitly enable them. In the article [Kotlin contexts](/kotlin-context-receivers/), we saw how to enable context receivers using Gradle. This time, we see how to do it in Maven. We need to pass the property `-Xcontext-receivers` to the `kotlin-maven-plugin` using the appropriate `configuration` element:
 
 ```xml
 <plugin>
@@ -127,9 +127,9 @@ Now that we have defined the domain model, the module containing the functions t
 
 The Raise DSL is a new way to handle typed errors in Kotlin. Instead of using a wrapper type to address both the happy path and errors, **the `Raise<E>` type describes the possibility that a function can raise a logical error of type `E`**. A function that can raise an error of type `E` must execute in a scope that can also handle the error.
 
-In this sense, the `Raise<E>` is very similar to the `CoroutineScope`, which describes the possibility for a function to execute suspending functions using structural concurrency (see the article [Kotlin Coroutines - A Comprehensive Introduction](https://blog.rockthejvm.com/kotlin-coroutines-101/) for further details).
+In this sense, the `Raise<E>` is very similar to the `CoroutineScope`, which describes the possibility for a function to execute suspending functions using structural concurrency (see the article [Kotlin Coroutines - A Comprehensive Introduction](/kotlin-coroutines-101/) for further details).
 
-As we saw in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/), Kotlin models such scopes using receivers instead.
+As we saw in the article [Kotlin Context Receivers: A Comprehensive Guide](/kotlin-context-receivers/), Kotlin models such scopes using receivers instead.
 
 The easiest way to define a function that can raise an error of type `E` is to use the `Raise<E>` type as the receiver of an extension function:
 
@@ -166,7 +166,7 @@ In fact, the compilation error is:
 Type mismatch: The inferred type is GenericError, but JobNotFound was expected
 ```
 
-At first, it could seem a limitation and a little misleading. However, it's not. In fact, the `Raise<E>` type is a **context**, giving us some capabilities once we run a function in its scope. For example, we have access to the above `raise` function. If you remember, we did the same in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/), where we defined a context in which it's possible to serialize an object to JSON:
+At first, it could seem a limitation and a little misleading. However, it's not. In fact, the `Raise<E>` type is a **context**, giving us some capabilities once we run a function in its scope. For example, we have access to the above `raise` function. If you remember, we did the same in the article [Kotlin Context Receivers: A Comprehensive Guide](/kotlin-context-receivers/), where we defined a context in which it's possible to serialize an object to JSON:
 
 ```kotlin
 interface JsonScope<T> {
@@ -208,7 +208,7 @@ val consoleLogger = object : Logger {
 }
 ```
 
-As we saw in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/), we can't add the `Logger`type as a receiver of the `findById` method since the only available receiver is already taken by the `Raise<JobError>` type. Fortunately, Kotlin context receivers can rescue us. In fact, we can treat the `Raise<JobError>` receiver as a context receiver, obtaining the following equivalent code:
+As we saw in the article [Kotlin Context Receivers: A Comprehensive Guide](/kotlin-context-receivers/), we can't add the `Logger`type as a receiver of the `findById` method since the only available receiver is already taken by the `Raise<JobError>` type. Fortunately, Kotlin context receivers can rescue us. In fact, we can treat the `Raise<JobError>` receiver as a context receiver, obtaining the following equivalent code:
 
 ```kotlin
 interface Jobs {
@@ -708,7 +708,7 @@ fun salaryWithNullableRaise(jobId: JobId): Salary = salary(jobId).bind()
 
 Remember that the original `salary` function returns an `Option<Salary>`.
 
-Last, we have the `Result<A>` wrapper type. As you may remember from the [previous article of the series](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-2/), the `Result<A>` uses subclasses of `Throwable` to represent the error information. In fact, the Arrow library has an implementation of the `Raise<E>` interface for the `Result<A>` type. It uses `Throwable` for the `E` type variable:
+Last, we have the `Result<A>` wrapper type. As you may remember from the [previous article of the series](/functional-error-handling-in-kotlin-part-2/), the `Result<A>` uses subclasses of `Throwable` to represent the error information. In fact, the Arrow library has an implementation of the `Raise<E>` interface for the `Result<A>` type. It uses `Throwable` for the `E` type variable:
 
 ```kotlin
 // Arrow Kt Library

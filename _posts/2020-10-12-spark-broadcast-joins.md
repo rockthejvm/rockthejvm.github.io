@@ -83,7 +83,7 @@ Brilliant - all is well. Except it takes a bloody ice age to run.
 
 Why does the above join take so long to run?
 
-If you ever want to debug performance problems with your Spark jobs, you'll need to know how to [read query plans](https://blog.rockthejvm.com/reading-query-plans/), and that's what we are going to do here as well. Let's have a look at this job's query plan so that we can see the operations Spark will perform as it's computing our innocent join:
+If you ever want to debug performance problems with your Spark jobs, you'll need to know how to [read query plans](/reading-query-plans/), and that's what we are going to do here as well. Let's have a look at this job's query plan so that we can see the operations Spark will perform as it's computing our innocent join:
 
 ```scala
 joined.explain()

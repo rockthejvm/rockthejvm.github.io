@@ -22,7 +22,7 @@ UDP has the following characteristics:
 
 UDP is mainly used for time-sensitive communications where occasionally dropping packets is better than waiting, such applications include live video streaming and VoIP, online gaming, and live broadcast streams.
 
-In this article, we will first understand how to implement UDP with Java NIO and gradually transition to [Fs2's](https://blog.rockthejvm.com/fs2/) io library which provides binding for UDP networking. In the last section, we'll create a live audio streaming server with the knowledge we've gained.
+In this article, we will first understand how to implement UDP with Java NIO and gradually transition to [Fs2's](/fs2/) io library which provides binding for UDP networking. In the last section, we'll create a live audio streaming server with the knowledge we've gained.
 
 ## 2. Setting Up
 Let's create a new Scala 3 project and add the following to your `build.sbt` file.
@@ -427,7 +427,7 @@ object Fs2Udp extends IOApp {
     def run(args: List[String]): IO[ExitCode] = ???
 }
 ```
-To define socket options, the `openDatagramSocket()` method allows for an options parameter that takes a `List[DatagramSocketOption]`, if we dig into this type definition, we'll find that `DatagramSocketOption` is an alias for the `SocketOption` [trait](https://blog.rockthejvm.com/scala-3-traits/) from `fs2.io.net`:
+To define socket options, the `openDatagramSocket()` method allows for an options parameter that takes a `List[DatagramSocketOption]`, if we dig into this type definition, we'll find that `DatagramSocketOption` is an alias for the `SocketOption` [trait](/scala-3-traits/) from `fs2.io.net`:
 
 ```scala
 package object net {

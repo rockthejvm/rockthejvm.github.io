@@ -195,9 +195,9 @@ fun main() {
 }
 ```
 
-Did we already encounter this pattern? Yes, we did. The [Kotlin coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/) heavily rely on the same design. All the coroutine builders, a.k.a. `launch` and `async`, are extensions of the `CoroutineScope`, the dispatcher receiver and the safe place to call the `suspend` functions.
+Did we already encounter this pattern? Yes, we did. The [Kotlin coroutines](/kotlin-coroutines-101/) heavily rely on the same design. All the coroutine builders, a.k.a. `launch` and `async`, are extensions of the `CoroutineScope`, the dispatcher receiver and the safe place to call the `suspend` functions.
 
-Moreover, if you have a Scala or Haskell background, you might notice some interesting similarities with the [Type Classes](https://blog.rockthejvm.com/why-are-typeclasses-useful/). In fact, the `JsonScope` interface is a type class, and the `jobJsonScope` is an instance of the `JsonScope` type class for the `Job` type. If we were in Scala, we would have called the `JsonScope` type class `Jsonable` or something like that.
+Moreover, if you have a Scala or Haskell background, you might notice some interesting similarities with the [Type Classes](/why-are-typeclasses-useful/). In fact, the `JsonScope` interface is a type class, and the `jobJsonScope` is an instance of the `JsonScope` type class for the `Job` type. If we were in Scala, we would have called the `JsonScope` type class `Jsonable` or something like that.
 
 The difference between Kotlin and Scala/Haskell is that we do not have any implicit and automatic mechanism to find the correct type class instance. In Scala 2, we have the `implicit` classes, and in Scala 3, we have `given` classes. In Kotlin, we still do not have any auto-magic mechanism.
 
@@ -416,7 +416,7 @@ class JobController {
 
 However, the notation is very verbose and makes the code less readable. Moreover, we must ensure that a developer uses it.
 
-In Scala, we had a very close problem with the [Tagless Final encoding](https://blog.rockthejvm.com/tagless-final/) pattern.
+In Scala, we had a very close problem with the [Tagless Final encoding](/tagless-final/) pattern.
 
 > If you don't know Scala or Tagless Final, just skip the Scala code - it's a small comparison.
 
@@ -473,7 +473,7 @@ As we can see, the code it's easier to read. The responsibilities of each method
 
 So, although it's possible to implement dependency injection through context receivers, the final solution has a lot of concerns and should be avoided.
 
-The final use case for context receivers is to help with typed errors. In fact, the newer version of the Arrow library uses context receivers to implement an intelligent mechanism to handle typed errors when using functional error handling. However, we'll see this in the next series article, "Functional Error Handling in Kotlin". You can find the first two parts of the series [here](https://blog.rockthejvm.com/functional-error-handling-in-kotlin/) and [here](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-2/).
+The final use case for context receivers is to help with typed errors. In fact, the newer version of the Arrow library uses context receivers to implement an intelligent mechanism to handle typed errors when using functional error handling. However, we'll see this in the next series article, "Functional Error Handling in Kotlin". You can find the first two parts of the series [here](/functional-error-handling-in-kotlin/) and [here](/functional-error-handling-in-kotlin-part-2/).
 
 ## 5. Conclusion
 

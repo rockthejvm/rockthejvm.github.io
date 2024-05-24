@@ -89,7 +89,7 @@ and they are the bread and butter of code and data organization, so you need to 
 
 ## Skill 4: Pattern Matching
 
-Pattern matching is one of Scala's most powerful features, eliminating vast amounts of boilerplate. Learn what pattern matching is and how it works. As you become more experienced with pattern matching, you can also learn some nicer [pattern matching tricks](https://blog.rockthejvm.com/8-pm-tricks/) to speed up your development.
+Pattern matching is one of Scala's most powerful features, eliminating vast amounts of boilerplate. Learn what pattern matching is and how it works. As you become more experienced with pattern matching, you can also learn some nicer [pattern matching tricks](/8-pm-tricks/) to speed up your development.
 
 It's so useful and powerful, that it occurs everywhere. I've never heard of a Scala developer that doesn't use pattern matching.
 

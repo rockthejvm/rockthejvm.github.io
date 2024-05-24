@@ -11,7 +11,7 @@ _This article is brought to you by [Riccardo Cardin](https://github.com/rcardin)
 
 _Enter Riccardo:_
 
-This article introduces Kotlin coroutines, a powerful tool for asynchronous programming. Kotlin's coroutines fall under the umbrella of structured concurrency. They implement a model of concurrency which you can consider similar to Java virtual threads, [Cats Effect](https://blog.rockthejvm.com/cats-effect-fibers/) and [ZIO fibers](https://blog.rockthejvm.com/zio-fibers/). In detail, we'll present some use cases concerning the use of coroutines on backend services, not on the Android environment.
+This article introduces Kotlin coroutines, a powerful tool for asynchronous programming. Kotlin's coroutines fall under the umbrella of structured concurrency. They implement a model of concurrency which you can consider similar to Java virtual threads, [Cats Effect](/cats-effect-fibers/) and [ZIO fibers](/zio-fibers/). In detail, we'll present some use cases concerning the use of coroutines on backend services, not on the Android environment.
 
 The article requires existing knowledge of Kotlin.
 
@@ -98,7 +98,7 @@ suspend fun bathTime() {
 }
 ```
 
-If you're a Scala geek and have been following us for a while, you may notice the example is the same as the [ZIO Fibers article](https://blog.rockthejvm.com/zio-fibers/) - a great opportunity for you to see how coroutines are different from fibers.
+If you're a Scala geek and have been following us for a while, you may notice the example is the same as the [ZIO Fibers article](/zio-fibers/) - a great opportunity for you to see how coroutines are different from fibers.
 
 The `delay(timeMillis: Long)` function is a `suspend` that suspends a coroutine for `timeMillis` milliseconds. A `suspend` function can be called only from a coroutine or another `suspend` function. It can be suspended and resumed. In the example above, the `bathTime` function can be suspended when the coroutine executes the `delay` function. Once resumed, the `bathTime` function will continue its execution from the line immediately after the suspension.
 

@@ -11,7 +11,7 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-In this series [first part](https://blog.rockthejvm.com/functional-error-handling-in-kotlin/), we introduced some of the available strategies to handle errors in a functional fashion using Kotlin and the Arrow library. In this second part, we'll continue our journey by looking at the `Result` and `Either` data types and how to use them to handle errors in a functional way.
+In this series [first part](/functional-error-handling-in-kotlin/), we introduced some of the available strategies to handle errors in a functional fashion using Kotlin and the Arrow library. In this second part, we'll continue our journey by looking at the `Result` and `Either` data types and how to use them to handle errors in a functional way.
 
 For the project's setup, please refer to the first part of this series, in which we set up Maven and the needed dependencies.
 
@@ -377,7 +377,7 @@ maybeSalary.fold({
 
 ## 3. Composing `Result` Instances
 
-As we saw in the previous article, we often deal with types (usually some containers) that are "chainable" or "monadic" in structure (more details on [Another Take at Monads: A Way to Generalize Chained Computations](https://blog.rockthejvm.com/another-take-on-monads/)), so the crucial point is how we can compose and combine them. In the first part of this series, we implemented a function that returns the gap between the job salary given a job id and the maximum compensation for the same company. We called the function `getSalaryGapWithMax`.
+As we saw in the previous article, we often deal with types (usually some containers) that are "chainable" or "monadic" in structure (more details on [Another Take at Monads: A Way to Generalize Chained Computations](/another-take-on-monads/)), so the crucial point is how we can compose and combine them. In the first part of this series, we implemented a function that returns the gap between the job salary given a job id and the maximum compensation for the same company. We called the function `getSalaryGapWithMax`.
 
 We want to refactor the example using the `Result` type. First, we need to add the `findAll` function to the `Jobs` interface and implementation:
 
@@ -566,7 +566,7 @@ However, sometimes we want to map errors in custom types that don't belong to th
 
 ## 4. Type-safe Error Handling: The `Either` Type
 
-Let's now introduce the `Either` type for error handling. Kotlin doesn't ship the `Either` type with the standard SDK. We need Arrow to add it to the game. The structure of `Either<E, A>` is that of an [Algebraic Data Type](https://blog.rockthejvm.com/algebraic-data-types/) (ADT). In detail, it's a sum type that can contain either a value `A` wrapped in the type `Right<A>` or a value `E` wrapped in a type `Left<E>`. It's common to associate `Left` instances with the result of a failed computation and `Right` instances with the result of a successful calculation. The `Either` type is defined as follows:
+Let's now introduce the `Either` type for error handling. Kotlin doesn't ship the `Either` type with the standard SDK. We need Arrow to add it to the game. The structure of `Either<E, A>` is that of an [Algebraic Data Type](/algebraic-data-types/) (ADT). In detail, it's a sum type that can contain either a value `A` wrapped in the type `Right<A>` or a value `E` wrapped in a type `Left<E>`. It's common to associate `Left` instances with the result of a failed computation and `Right` instances with the result of a successful calculation. The `Either` type is defined as follows:
 
 ```kotlin
 // Arrow SDK
@@ -592,7 +592,7 @@ val appleJobId = JobId(1)
 val appleJob: Either<JobError, Job> = Right(JOBS_DATABASE[appleJobId]!!)
 ```
 
-Here, we forced the type of the left part of the `Either` to be `JobError`. Notice that the constructor returns an `Either` with the left part defined as `Nothing`. The compiler allows us to do this because the `Nothing` type is a subtype of any other type, and **the `Either<A, B>` is covariant on the left part since it's defined using the `out` keyword** (we already saw variance in previous articles on Scala, [Variance Positions in Scala, Demystified](https://blog.rockthejvm.com/scala-variance-positions/)).
+Here, we forced the type of the left part of the `Either` to be `JobError`. Notice that the constructor returns an `Either` with the left part defined as `Nothing`. The compiler allows us to do this because the `Nothing` type is a subtype of any other type, and **the `Either<A, B>` is covariant on the left part since it's defined using the `out` keyword** (we already saw variance in previous articles on Scala, [Variance Positions in Scala, Demystified](/scala-variance-positions/)).
 
 Now, we can create our `Left` type instance:
 
@@ -703,7 +703,7 @@ The `nonFatalOrThrow` function checks whether the exception should be handled. T
 * `ControlThrowable`
 * `CancellationException`
 
-The subtypes of these errors should not be caught. For example, CancellationException should not be caught because it's used by Kotlin to [cancel coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/#7-cancellation), and catching it can break normal functioning of coroutines.
+The subtypes of these errors should not be caught. For example, CancellationException should not be caught because it's used by Kotlin to [cancel coroutines](/kotlin-coroutines-101/#7-cancellation), and catching it can break normal functioning of coroutines.
 
 Then, we can rewrite the `LiveJobs` class using the `catch` function:
 

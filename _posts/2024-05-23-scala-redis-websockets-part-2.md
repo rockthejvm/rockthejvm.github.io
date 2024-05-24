@@ -12,7 +12,7 @@ toc_label: "In this article"
 _by [Herbert Kateu](https://github.com/hkateu)_
 
 ## 1. Introduction
-This article is a follow-up to the [websocket](https://blog.rockthejvm.com/websockets-in-http4s/) article that was published previously. To recap, we created an in-memory chat application using WebSockets with the help of the Http4s library. The chat application had a variety of features implemented through commands directly in the chat window such as the ability to create users, create chat rooms, and switch between chat rooms. 
+This article is a follow-up to the [websocket](/websockets-in-http4s/) article that was published previously. To recap, we created an in-memory chat application using WebSockets with the help of the Http4s library. The chat application had a variety of features implemented through commands directly in the chat window such as the ability to create users, create chat rooms, and switch between chat rooms. 
 
 In this iteration, we'll be integrating Redis to keep track of the users and rooms and we'll also be persisting messages in Postgres so that new users can have access to previous conversations. Finally, We'll get rid of `chatState` and create a new protocol that interacts with Postgres and Redis.
 
@@ -256,7 +256,7 @@ $ \d
 ```
 ## 5. Skunk for PostgreSQL Integration
 
-In this section, we'll implement the protocols necessary for interacting with Postgres in our application using [Skunk](https://blog.rockthejvm.com/skunk-complete-guide/).
+In this section, we'll implement the protocols necessary for interacting with Postgres in our application using [Skunk](/skunk-complete-guide/).
 
 First, we'll need to implement `Codec`s for the types in our domain. Create a `codecs.scala` file in the following path, `src/main/scala/rockthejvm/websockets/codecs/codecs.scala` and add the following code:
 

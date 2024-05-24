@@ -21,7 +21,7 @@ Video version by Daniel:
 
 ## 1. Setting the Stage
 
-We’ll use version 1.9.22 of Kotlin and version 1.2.1 of the Arrow library. We'll also use [Kotlin's context receivers](https://blog.rockthejvm.com/kotlin-context-receivers/). Context receivers are still an experimental feature. Hence, they’re not enabled by default. We need to modify the Gradle configuration. Add the `kotlinOptions` block within the `tasks.withType<KotlinCompile>` block in your `build.gradle.kts` file:
+We’ll use version 1.9.22 of Kotlin and version 1.2.1 of the Arrow library. We'll also use [Kotlin's context receivers](/kotlin-context-receivers/). Context receivers are still an experimental feature. Hence, they’re not enabled by default. We need to modify the Gradle configuration. Add the `kotlinOptions` block within the `tasks.withType<KotlinCompile>` block in your `build.gradle.kts` file:
 
 ```kotlin
 tasks.withType<KotlinCompile>().configureEach {
@@ -107,7 +107,7 @@ We introduced a type parameter to let the clients work with the concrete DTO typ
 
 **Abstracting the behavior in abstract types (or interfaces) and implementing it for concrete kinds**, letting client function stay generic and reusable, is a typical pattern in any modern high-level programming language. This pattern **is called _polymorphism_**.
 
-The method `validate` returns the validated data in case all the validation processes passed. Since we don't want to manage the case the data is not valid through exceptions (see [Functional Error Handling in Kotlin, Part 1: Absent values, Nullables, Options](https://blog.rockthejvm.com/functional-error-handling-in-kotlin/#2-why-exception-handling-is-not-functional) for further details), we'll introduce the `Either` type from the Arrow Kt library (if you need an insight on how to use it, please refer to [Functional Error Handling in Kotlin, Part 2: Result and Either](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-2/)):
+The method `validate` returns the validated data in case all the validation processes passed. Since we don't want to manage the case the data is not valid through exceptions (see [Functional Error Handling in Kotlin, Part 1: Absent values, Nullables, Options](/functional-error-handling-in-kotlin/#2-why-exception-handling-is-not-functional) for further details), we'll introduce the `Either` type from the Arrow Kt library (if you need an insight on how to use it, please refer to [Functional Error Handling in Kotlin, Part 2: Result and Either](/functional-error-handling-in-kotlin-part-2/)):
 
 ```kotlin
 interface ValidationError
@@ -221,7 +221,7 @@ interface ValidatorScope<T> {                        // <- dispatcher receiver
 
 We can also access the dispatcher receiver in the function body as `this`. **Kotlin can represent the `this` reference as a union type of the dispatcher receiver and the receiver of the extension function**.
 
-For those who follow the RockTheJvm blog, it's not a surprise. We already introduced scopes in [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/#2-dispatchers-and-receivers).
+For those who follow the RockTheJvm blog, it's not a surprise. We already introduced scopes in [Kotlin Context Receivers: A Comprehensive Guide ](/kotlin-context-receivers/#2-dispatchers-and-receivers).
 
 The last changes require us to change also the implementation of the validator for the `CreatePortfolioDTO` type:
 
@@ -265,11 +265,11 @@ public inline fun <T, R> with(receiver: T, block: T.() -> R): R {
 
 Usually, the `with` function is preferred in such situations instead of the other available scope functions.
 
-The same pattern is used for [Kotlin coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/), where all the coroutine builders, i.e., `launch`, `async,` are extensions of the `CoroutineScope,` which acts as dispatcher receiver.
+The same pattern is used for [Kotlin coroutines](/kotlin-coroutines-101/), where all the coroutine builders, i.e., `launch`, `async,` are extensions of the `CoroutineScope,` which acts as dispatcher receiver.
 
 One open and unresolved point about implementing type classes in Kotlin is that we still need an automatic discovery process. Other languages supporting type classes, such as Scala and Haskell, implement some form of automatic discovery. Scala, for example, has an implicit resolution.
 
-Last but not least, we can also use Kotlin [context receivers](https://blog.rockthejvm.com/kotlin-context-receivers/#2-dispatchers-and-receivers) to declare that a function needs a specific context to be executed. So, we can change the `process` function as follows:
+Last but not least, we can also use Kotlin [context receivers](/kotlin-context-receivers/#2-dispatchers-and-receivers) to declare that a function needs a specific context to be executed. So, we can change the `process` function as follows:
 
 ```kotlin
 context(ValidatorScope<T>)

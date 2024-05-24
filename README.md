@@ -16,7 +16,7 @@ The bundler will automatically update as you modify content.
 
 All articles are in the `_posts` directory. To add a new article, create a new file with the name `yyyy-mm-dd-title-of-the-article.md`. Jekyll will use the date in the filename and the front matter (described shortly) to automatically sort articles and search by date.
 
-All files are Markdown, with a header that looks like this (example from one of the articles):
+All files are Markdown, with a header that looks like below (example from one of the articles). Just copy everything and change the title, tags and excerpt
 
 ```
 ---

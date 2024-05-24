@@ -238,7 +238,7 @@ def directorRoutes[F[_] : Monad]: HttpRoutes[F] = {
 
 **The routes defined using the http4s DSL are composable**. So, it means that we can define them in different modules and then compose them in a single `HttpRoutes[F]` object. As developers, we know how vital module compositionality is for code that is easily maintainable and evolvable.
 
-The trick is that the type `HttpRoutes[F]`, being an instance of the `Kleisli` type, is also a [`Semigroup`](https://blog.rockthejvm.com/semigroups-and-monoids-in-scala/). In fact, it's a `SemigroupK`, as we have a semigroup of an effect (remember the `F[_]` type constructor).
+The trick is that the type `HttpRoutes[F]`, being an instance of the `Kleisli` type, is also a [`Semigroup`](/semigroups-and-monoids-in-scala/). In fact, it's a `SemigroupK`, as we have a semigroup of an effect (remember the `F[_]` type constructor).
 
 The main feature of semigroups is the definition of the `combine` function which, given two elements of the semigroup, returns a new element also belonging to the semigroup. For the `SemigroupK` type class, the function is called`combineK` or `<+>`.
 
@@ -335,7 +335,7 @@ The `sanitized` attribute may safely be displayed to a client to describe an err
 
 Instead, the `leftMap` function comes as an extension method of the Cats `Bifunctor` type class. When the type class is instantiated for the `Either` type, it provides many useful methods as `leftMap`, which eventually applies the given function to a `Left` value.
 
-Finally, the `OptionalValidatingQueryParamDecoderMatcher[T]` returns the result of the validation process as an instance of the type `Validated[E, A]`. [`Validated[E, A]`](https://blog.rockthejvm.com/idiomatic-error-handling-in-scala/#4-advanced-validated) is a type coming from the Cats library representing the result of a validation process: If the process ends successfully, the `Validated` contains instance of type `A`, errors of type `E` otherwise. Moreover, we use `Validated[E, A]` in opposition to `Either[E, A]`, for example, because it accumulates errors by design. In our example, the _matcher_ returns an instance of `Validated[ParseFailure, Year]`.
+Finally, the `OptionalValidatingQueryParamDecoderMatcher[T]` returns the result of the validation process as an instance of the type `Validated[E, A]`. [`Validated[E, A]`](/idiomatic-error-handling-in-scala/#4-advanced-validated) is a type coming from the Cats library representing the result of a validation process: If the process ends successfully, the `Validated` contains instance of type `A`, errors of type `E` otherwise. Moreover, we use `Validated[E, A]` in opposition to `Either[E, A]`, for example, because it accumulates errors by design. In our example, the _matcher_ returns an instance of `Validated[ParseFailure, Year]`.
 
 Once validated the query parameter, we can introduce the code handling the failure with a `BadRequest` HTTP status:
 

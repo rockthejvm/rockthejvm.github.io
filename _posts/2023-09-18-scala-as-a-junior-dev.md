@@ -201,7 +201,7 @@ We could use standard interfaces to reproduce type classes, but then we would ha
 - it is cumbersome to write and it pollutes the code with "context" arguments (arguments that will always be the same in the current scope)
 - when changing the implementation, it must be done everywhere to keep the same behavior and we might forget some places, leading to unexpected behaviors
 
-You can find more about implicits (also called given/using clauses in Scala 3) in this [article](https://blog.rockthejvm.com/scala-3-given-using/)
+You can find more about implicits (also called given/using clauses in Scala 3) in this [article](/scala-3-given-using/)
 
 But implicits comes with a trade-off: they can be hard to understand at first, and might lead to unexpected behaviors where the wrong implicit is injected. Especially when there are multiple implicits of the same type in the scope (look at the implicit resolution process to avoid this). Still, it is a very powerful feature that helps in making the code more expressive by masking some boilerplates (I know that I'm giving `global` as execution context, so I don't want to see it each time).
 

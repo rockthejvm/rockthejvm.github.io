@@ -13,7 +13,7 @@ _by [Herbert Kateu](https://github.com/hkateu)_
 
 ## 1. Introduction
 
-This is a follow-up to the [Two Factor Authentication](https://blog.rockthejvm.com/otp-authentication-scala-http4s/) article that was written earlier, and as such is the third article in the series.
+This is a follow-up to the [Two Factor Authentication](/otp-authentication-scala-http4s/) article that was written earlier, and as such is the third article in the series.
 
 OAuth which stands for Open Authorization is an open standard framework that allows the user to permit a website or application to interact with another without giving up his or her password.
 
@@ -103,7 +103,7 @@ Follow the following steps to register our app with GitHub:
 
 ### 2.3. Configuring our application.
 
-In the following sections, we'll build our Scala application using [Http4s](https://blog.rockthejvm.com/http4s-tutorial/) for the routing and serving the application, Circe for JSON parsing, and Ciris for configuration.
+In the following sections, we'll build our Scala application using [Http4s](/http4s-tutorial/) for the routing and serving the application, Circe for JSON parsing, and Ciris for configuration.
 
 Create a resources folder inside your main folder. Then within it create an `apiConfig.json` file and add the Client Id and Client Secret we saved earlier from GitHub in the following format.
 

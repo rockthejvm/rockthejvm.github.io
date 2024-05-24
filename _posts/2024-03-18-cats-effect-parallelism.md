@@ -171,7 +171,7 @@ object domain {
 }
 ```
 
-We've defined an [`opaque type`](https://blog.rockthejvm.com/scala-3-opaque/) which essentially is an `Int`. It has an `apply` constructor and `Empty` value. `apply` defines the method in the companion object. It allows you to create instances of `PublicRepos` by calling `PublicRepos` as if it was a function, passing an integer value as an argument, this way we could avoid additional wrapping cost over simple integers.
+We've defined an [`opaque type`](/scala-3-opaque/) which essentially is an `Int`. It has an `apply` constructor and `Empty` value. `apply` defines the method in the companion object. It allows you to create instances of `PublicRepos` by calling `PublicRepos` as if it was a function, passing an integer value as an argument, this way we could avoid additional wrapping cost over simple integers.
 
 `Empty` value can be used in case the key is absent in JSON, or in case it has a negative value. The latter one is less likely to happen, but let's choose the safer road and insure ourselves with a sensible fallback - 0.
 

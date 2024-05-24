@@ -393,7 +393,7 @@ Unlike Java, Kotlin doesn't provide a type for handling optional values. As we s
 
 We can add optional types to the language using the `Arrow` library, which provides a lot of functional programming constructs, including an `Option` type.
 
-The type defined by the Arrow library to manage optional values is the `arrow.core.Option<out A>` type. Basically, it's a [Algebraic Data Type (ADT)](https://blog.rockthejvm.com/algebraic-data-types/), technically a sum type, which can be either `Some<A>` or `None`.
+The type defined by the Arrow library to manage optional values is the `arrow.core.Option<out A>` type. Basically, it's a [Algebraic Data Type (ADT)](/algebraic-data-types/), technically a sum type, which can be either `Some<A>` or `None`.
 
 The `Some<A>` type represents a value of type `A`, while the `None` type represents the absence of any value. In other words, `Option` is a type that can either contain a value or not.
 
@@ -499,7 +499,7 @@ However, if we use a job id that is not associated with any job, we get the foll
 Job not found for id JobId(value=42)
 ```
 
-However, working with pattern matching is only sometimes very convenient. A lot of time, we need to transform and combine different `Option` values. As in Scala, the `Option` type is a [monad](https://blog.rockthejvm.com/monads/), so we can use the `map` and `flatMap` functions to transform and combine `Option` values. Let's see an example.
+However, working with pattern matching is only sometimes very convenient. A lot of time, we need to transform and combine different `Option` values. As in Scala, the `Option` type is a [monad](/monads/), so we can use the `map` and `flatMap` functions to transform and combine `Option` values. Let's see an example.
 
 Imagine we want to create a function that returns the gap between the job salary given a job id and the maximum salary for the same company. We want to return `None` if the job doesn't exist. To implement such a function, first, we need to add a `findAll` method to our `Jobs` interface:
 
