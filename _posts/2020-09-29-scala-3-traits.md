@@ -2,7 +2,7 @@
 title: "Scala 3 Traits: New Features"
 date: 2020-09-29
 header:
-  image: "/images/blog cover.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, scala 3, traits]
 excerpt: "This article will continue some of the previous explorations of Scala 3. Here, we'll discuss some of the new functionality of traits in Scala 3."
 ---
@@ -116,7 +116,3 @@ When Scala 3 comes out, the traits `Product`, `Comparable` (from Java) and `Seri
 ## 4. Conclusion
 
 You've learned two new features of Scala 3 regarding traits. Put them to good use when Scala 3 comes out!
-
-
-
-

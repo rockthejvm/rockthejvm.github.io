@@ -2,7 +2,7 @@
 title: "Scala Testing with ScalaTest: Test Styles for Beginners"
 date: 2021-05-17
 header:
-    image: "/images/blog cover.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, testing]
 excerpt: "In this article, we'll go through the major testing styles with Scala and ScalaTest, and we'll understand what 'FunSuite', 'FlatSpec' etc mean."
 ---
@@ -21,7 +21,7 @@ To write code with me in this article, you'll need to add the ScalaTest librarie
 
 ```scala
 libraryDependencies ++= Seq(
-  "org.scalactic" %% "scalactic" % "3.2.7",   
+  "org.scalactic" %% "scalactic" % "3.2.7",
   "org.scalatest" %% "scalatest" % "3.2.7" % "test"
 }
 ```

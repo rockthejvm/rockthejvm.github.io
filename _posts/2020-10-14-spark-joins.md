@@ -2,9 +2,9 @@
 title: "ALL the Joins in Spark DataFrames"
 date: 2020-10-12
 header:
-  image: "/images/blog cover.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [spark]
-excerpt: "It's obvious that Spark allows us to join tables. What's not obvious is how many different kinds of joins Spark supports. We explore them in this article." 
+excerpt: "It's obvious that Spark allows us to join tables. What's not obvious is how many different kinds of joins Spark supports. We explore them in this article."
 ---
 
 This article is for the beginner Spark programmer. If you're just starting out and you're curious about the kinds of operations Spark supports, this blog post is for you.
@@ -20,7 +20,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion,
   "org.apache.spark" %% "spark-sql" % sparkVersion,
 )
-``` 
+```
 
 If you use the standalone installation, you'll need to start a Spark shell. If you're in a dedicated Scala application, add the following small boilerplate at the start of your code:
 
@@ -272,4 +272,3 @@ So as you can see, the size of your resulting data simply explodes. Being a cart
 ## Conclusion
 
 There you have it, folks: all the join types you can perform in Apache Spark. Even if some join types (e.g. inner, outer and cross) may be quite familiar, there are some interesting join types which may prove handy as filters (semi and anti joins).
-  

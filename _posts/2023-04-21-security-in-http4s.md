@@ -2,7 +2,7 @@
 title: "Configuring Http4s Security: CORS and CSRF"
 date: 2023-03-30
 header:
-  image: "/images/blog cover.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: []
 excerpt: "In this article, we will show you how to set up an Http4s server so that it correctly protects against cross-origin requests and CSRF."
 toc: true
@@ -282,7 +282,7 @@ object securityHttp4s extends IOApp {
         .withHttpApp(corsService)
         .build
 
-    override def run(args: List[String]): IO[ExitCode] = 
+    override def run(args: List[String]): IO[ExitCode] =
       server.use(_ => IO.never).as(ExitCode.Success)
 }
 ```

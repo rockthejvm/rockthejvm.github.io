@@ -2,9 +2,9 @@
 title: "Scala 3: Opaque Types"
 date: 2020-10-02
 header:
-  image: "/images/blog cover.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, scala 3]
-excerpt: "We discover opaque type aliases in Scala 3 and how we can define new types with zero overhead." 
+excerpt: "We discover opaque type aliases in Scala 3 and how we can define new types with zero overhead."
 ---
 
 This article continues the series on Scala 3. I'll assume you're familiar with some of the Scala (version 2) foundations, such as defining basic classes, methods, type aliases.

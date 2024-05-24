@@ -2,7 +2,7 @@
 title: "Scala Generics: A Gentle Introduction"
 date: 2022-05-12
 header:
-    image: "/images/blog cover.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, beginners]
 excerpt: "Scala generics are easy to understand if you come from a Java background. But what about Python or JS folks?"
 ---
@@ -224,10 +224,3 @@ and that would be a generic method in Scala.
 This article was a slow and smooth introduction to Scala generics, for people who are getting started with Scala and particularly those coming from dynamically-typed languages like Python or JavaScript. We discussed why static typing is useful, how generics help us reuse code easily, and some generics features such as multiple type arguments and generic methods.
 
 If you liked this approach, we explain a lot more such core Scala concepts in the [Scala Essentials course](https://rockthejvm.com/p/scala), so consider checking it out.
-
-
-
-
-
-
-

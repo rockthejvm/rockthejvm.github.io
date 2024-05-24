@@ -2,7 +2,7 @@
 title: "Type Classes in Kotlin: A Practical Guide"
 date: 2024-02-06
 header:
-    image: "/images/blog cover.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [kotlin]
 excerpt: "Learn type classes in Kotlin - a powerful 'design pattern' to organize your code better and make it easier to read, understand and change."
 toc: true
@@ -226,8 +226,8 @@ For those who follow the RockTheJvm blog, it's not a surprise. We already introd
 The last changes require us to change also the implementation of the validator for the `CreatePortfolioDTO` type:
 
 ```kotlin
-val createPortfolioDTOValidatorScope = 
-    object : ValidatorScope<CreatePortfolioDTO> { 
+val createPortfolioDTOValidatorScope =
+    object : ValidatorScope<CreatePortfolioDTO> {
         override fun CreatePortfolioDTO.validate(): EitherNel<ValidationError, CreatePortfolioDTO> =
             // validation logic here
 }
