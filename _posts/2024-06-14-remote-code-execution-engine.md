@@ -13,13 +13,25 @@ _by [Anzori (Nika) Ghurtchumelia](https://github.com/ghurtchu)_
 
 It's been a long time since my last article, but I am back with greater passion and energy to explore and learn more about the existing tools within Scala ecosystem by building something tangible and useful with them.
 
-The greatest benefit of small side projects is the unique knowledge boost which can be useful later in our careers.
+The greatest benefit of small side projects is the unique knowledge boost which can potentially be handy later in career.
 
-In this article we will see an attempt to build the remote code execution engine - the backend platform for websites such as [Hackerrank](https://hackerrank.com), [Leetcode](https://leetcode.com) and others.
+In this article we will attempt to build the remote code execution engine - the backend platform for websites such as [Hackerrank](https://hackerrank.com), [Leetcode](https://leetcode.com) and others.
 
-As for tools, we will be using `Scala 3`, `Pekko` and `docker`.
+If, for some reason you're unfamiliar with the websites mentioned above, the basic flow of such websites is described below:
+- Client sends code
+- Backend runs it and responds with output
 
-There are many ways how such platform can be built, however, the main goal of this article and the project is to get familiar with `Pekko` and its modules such as `pekko-http`, `pekko-stream`, `pekko-cluster` and a few interesting concepts revolving around actor model concurrency, such as: 
+There you go, sounds simple, right?
+
+Right, right... 
+
+Can you imagine how many things can go wrong here? It's the devil smirking in the corner, knowing, that the possibilities for failure are endless, however, later in the article we will define and address the important issues.
+
+To give you a quick idea: a separate blog post can be written only about the security, not to mention scalability, extensibility and a few other compulsory properties to make it production ready.
+
+The goal isn't to build the best one, nor it is to compete with the existing ones. 
+
+There are many ways how such platform can be built, however, the main idea of this article and the project is to get familiar with `Pekko` and its modules such as `pekko-http`, `pekko-stream`, `pekko-cluster` and a few interesting concepts revolving around actor model concurrency, such as: 
 - cluster nodes and formation
 - cluster aware routers
 - remote worker actors
@@ -33,6 +45,8 @@ Let's get started then, shall we?
 
 ## 2. Project Structure
 
+We will use `Scala 3.4.1`, `sbt 1.9.9`, `docker`, `pekko` and its modules to complete our project.
 
+The initial project skeleton looks like the following:
 
 
