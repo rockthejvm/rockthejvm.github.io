@@ -2,7 +2,7 @@
 title: "How to Use Akka Streams Graph DSL"
 date: 2020-07-12
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [akka streams]
 excerpt: "Akka Streams has the Graph DSL, which is one of its most powerful APIs. Learn how to use it and get started quickly with Akka Streams."
 ---

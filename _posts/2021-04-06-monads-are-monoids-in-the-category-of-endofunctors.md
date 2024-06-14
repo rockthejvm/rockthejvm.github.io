@@ -2,7 +2,7 @@
 title: "Monads are Monoids in the Category of Endofunctors - Scala version, No Psychobabble"
 date: 2021-04-06
 header:
-    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, mathematics, category theory]
 excerpt: "What's the problem?"
 ---

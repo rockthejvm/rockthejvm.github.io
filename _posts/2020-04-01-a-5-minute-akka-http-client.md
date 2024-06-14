@@ -2,7 +2,7 @@
 title: "Sending HTTP Requests in Scala and Akka in 5 minutes"
 date: 2020-04-01
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [akka, akka http, how to]
 excerpt: "Learn to use Akka HTTP with Scala and send HTTP requests in just a few minutes with the Akka HTTP server DSL."
 ---

@@ -2,7 +2,7 @@
 title: "Idiomatic Error Handling in Scala"
 date: 2021-02-04
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala]
 excerpt: "Error handling is likely one of the most frustrating part of programming, and in Scala, there are better and worse ways to do it. Let's take a look."
 ---

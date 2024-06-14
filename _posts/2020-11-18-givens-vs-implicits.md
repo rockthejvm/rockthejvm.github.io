@@ -2,7 +2,7 @@
 title: "Givens vs. Implicits in Scala 3"
 date: 2020-11-18
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala 3]
 excerpt: From the previous article, you know how givens work. Let's compare them with the old Scala implicits.
 ---

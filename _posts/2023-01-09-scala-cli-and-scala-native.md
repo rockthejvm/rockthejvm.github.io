@@ -2,7 +2,7 @@
 title: "Scala CLI Tutorial: Creating a CLI Sudoku Solver"
 date: 2023-01-09
 header:
-    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala 3, cats, scala-native, scala-cli]
 excerpt: "Scala CLI is a great tool for prototyping and building Scala applications. We'll use `scala-cli`, `Scala Native` and `decline` to build a brute-force sudoku solver."
 ---
