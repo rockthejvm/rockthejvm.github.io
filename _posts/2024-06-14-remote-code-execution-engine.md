@@ -49,4 +49,60 @@ We will use `Scala 3.4.1`, `sbt 1.9.9`, `docker`, `pekko` and its modules to com
 
 The initial project skeleton looks like the following:
 
+![alt "Project skeleton"](../images/braindrill/project_skeleton.png)
 
+- `assets` folder contains images mainly for setting up good `README.md`
+- `src` contains production and test code
+- `target` will store the compiled `.jar` file that we will run later
+- `.gitignore` for `git` to ignore some changes
+- `.scalafmt.conf` for formatting Scala code
+- `build.sbt` for defining build steps, external library dependencies and so on
+- `deploy.sh` is a useful script for deploying the project locally within using `docker-compose`
+- `docker-compose.yaml` for defining apps, their configuration and properties
+- `Dockerfile` blueprint for running the app inside container
+- `README.md` instructions for setting up the project locally
+
+Nothing fancy, let's move on `build.sbt`:
+```scala
+ThisBuild / scalaVersion := "3.4.1"
+
+val PekkoVersion = "1.0.2"
+val PekkoHttpVersion = "1.0.1"
+val PekkoManagementVersion = "1.0.0"
+
+assembly / assemblyMergeStrategy := {
+  case PathList("META-INF", "versions", "9", "module-info.class") => MergeStrategy.discard
+  case PathList("module-info.class")                              => MergeStrategy.discard
+  case x =>
+    val oldStrategy = (assembly / assemblyMergeStrategy).value
+    oldStrategy(x)
+}
+
+libraryDependencies ++= Seq(
+  "org.apache.pekko" %% "pekko-actor-typed" % PekkoVersion,
+  "org.apache.pekko" %% "pekko-stream" % PekkoVersion,
+  "org.apache.pekko" %% "pekko-http" % PekkoHttpVersion,
+  "org.apache.pekko" %% "pekko-cluster-typed" % PekkoVersion,
+  "org.apache.pekko" %% "pekko-serialization-jackson" % PekkoVersion,
+  "ch.qos.logback" % "logback-classic" % "1.5.6"
+)
+
+lazy val root = (project in file("."))
+  .settings(
+    name := "braindrill",
+    assembly / assemblyJarName := "braindrill.jar",
+    assembly / mainClass := Some("BrainDrill")
+  )
+```
+
+As shown:
+- we mainly use `pekko` libraries for main work and `logback-classic` for logging
+- `root` definition which defines the `name`, `assemblyJarName` and `mainClass`
+- all of which is used by `sbt assembly` to turn our code into `braindrill.jar`
+
+and a one line definition in `project/plugins.sbt`:
+```scala
+addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1") // SBT plugin for using assembly command
+```
+
+## 3. Project Architecture
