@@ -2,7 +2,7 @@
 title: "Cats: Essential Type Class Hierarchy, Explained"
 date: 2021-06-03
 header:
-    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, cats]
 excerpt: "Cats is a complex library for Scala. In this article, we'll deconstruct the major type classes of Cats and explain how they're connected."
 ---
