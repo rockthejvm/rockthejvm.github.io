@@ -17,7 +17,7 @@ The greatest benefit of small side projects is the unique knowledge boost which 
 
 In this article we will attempt to build the remote code execution engine - the backend platform for websites such as [Hackerrank](https://hackerrank.com), [Leetcode](https://leetcode.com) and others.
 
-If, for some reason you're unfamiliar with the websites mentioned above, the basic flow of such websites is described below:
+If, for some reason you're unfamiliar with the websites mentioned above, the basic usage flow is described below:
 - Client sends code
 - Backend runs it and responds with output
 
@@ -25,13 +25,13 @@ There you go, sounds simple, right?
 
 Right, right... 
 
-Can you imagine how many things can go wrong here? It's the devil smirking in the corner, knowing, that the possibilities for failure are endless, however, later in the article we will define and address the important issues.
+Can you imagine how many things can go wrong here? It's the devil smirking in the corner, knowing, that the possibilities for failure are endless, however, we will address some of them.
 
 To give you a quick idea: a separate blog post can be written only about the security, not to mention scalability, extensibility and a few other compulsory properties to make it production ready.
 
 The goal isn't to build the best one, nor it is to compete with the existing ones. 
 
-There are many ways how such platform can be built, however, the main idea of this article and the project is to get familiar with `Pekko` and its modules such as `pekko-http`, `pekko-stream`, `pekko-cluster` and a few interesting concepts revolving around actor model concurrency, such as: 
+Put simply, the goal of this project is to get familiar with `Pekko` and its modules such as `pekko-http`, `pekko-stream`, `pekko-cluster` and a few interesting concepts revolving around actor model concurrency, such as: 
 - cluster nodes and formation
 - cluster aware routers
 - remote worker actors
