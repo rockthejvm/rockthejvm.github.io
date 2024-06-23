@@ -11,7 +11,7 @@ _by [Anzori (Nika) Ghurtchumelia](https://github.com/ghurtchu)_
 
 ## 1. Introduction
 
-It's been a long time since my last article, but I am back with greater passion and energy to explore and learn more about the existing tools within Scala ecosystem by building something tangible and useful with them.
+After a long hiatus, I am back with renewed passion and energy, eager to delve deeper into the Scala ecosystem. This time, I am committed to building something tangible and useful with the tools available. Let's embark on this exciting journey of exploration and learning together.
 
 The greatest benefit of small side projects is the unique knowledge boost which can potentially be handy later in career.
 
@@ -109,29 +109,130 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1") // SBT plugin for using 
 
 After a few iterations I came up with the architecture that can be horizontally scaled, if required. 
 We have a `master` node and its role is to be the task distributor among `worker` nodes. 
-`http` is exposed on `master` node, acting as a gateway to outside world. 
-
-There are three main actors with their own responsibilities:
-- `Load Balancer`: lives on `master` node and knows how to find `Worker Router` actor within the pool of `worker` nodes
-- `Worker Router`: lives on `worker` node and simply assigns the `work` to one of the `Worker` actors
-- `Worker`: lives on `worker` node and actually does the job of code execution
-
-I omitted other actors for now, however we'll encounter `Code Executor` and `File Handler` actors later.
+`http` is exposed on `master` node, acting as a gateway to outside world.
 
 ### 3.1 Architecture Diagram
 
 ![alt "Project skeleton"](../images/braindrill/diagram.png)
 
-Let's explain step by step what happens during code execution and then clarify why this approach was chosen.
+Let's explain step by step what happens during code execution:
 
-- User sends `python` code at POST `http://localhost/python`
-- `http` is exposed on `master` node and it processes the request
-- random `load balancer actor` sends message to `worker router actor` on some node
-- `worker router actor` sends message to `worker actor` which starts execution
-- `worker actor` responds to `load balancer actor` once the code is executed
-- `load balancer actor` forwards message to `http` and user receives the output
+- User sends request at POST `http://localhost/python` with `python` code attached to request body
+- `http` processes the request
+- randomly chosen `load balancer` sends message to `worker router` on some node
+- `worker router` sends message to `worker` which starts execution
+- ... skipping lots of details ...
+- `worker` responds to `load balancer` once the code is executed
+- `load balancer` forwards message to `http` and user receives the output
 
-I skipped a lot of details here, but this is what this blog post is all about, so let's dive in :)
+Lot of details were skipped here, but they will be covered in the later parts of the blog post.
+
+## 4. Configuration
+
+Before writing any code let's check `resources/application.conf`:
+```json
+pekko {
+  actor {
+    provider = cluster
+
+    serialization-bindings {
+      "serialization.CborSerializable" = jackson-cbor
+    }
+  }
+  http {
+    host-connection-pool {
+        max-open-requests = 256
+    }
+  }
+  remote {
+    artery {
+      canonical.hostname = ${clustering.ip}
+      canonical.port = ${clustering.port}
+      large-message-destinations=[
+        "/temp/load-balancer-*"
+      ]
+    }
+  }
+  cluster {
+    seed-nodes = [
+      "pekko://"${clustering.cluster.name}"@"${clustering.seed-ip}":"${clustering.seed-port}
+    ]
+    roles = [${clustering.role}]
+    downing-provider-class = "org.apache.pekko.cluster.sbr.SplitBrainResolverProvider"
+  }
+}
+
+http {
+  port = 8080
+  host = "0.0.0.0"
+}
+
+
+clustering {
+ ip = "127.0.0.1"
+ ip = ${?CLUSTER_IP}
+ port = 1600
+ port = ${?CLUSTER_PORT}
+ role = ${?CLUSTER_ROLE}
+ seed-ip = "127.0.0.1"
+ seed-ip = ${?CLUSTER_IP}
+ seed-ip = ${?SEED_IP}
+ seed-port = 1600
+ seed-port = ${?SEED_PORT}
+ cluster.name = ClusterSystem
+}
+```
+
+This file configures various settings for the Pekko application, including actor system properties, HTTP settings, remote communication, and clustering parameters:
+
+**1. Pekko Actor System Configuration**
+- `provider = cluster`: This setting specifies that the actor system will use clustering capabilities.
+- `serialization-bindings`: This section defines serialization bindings for specific classes. Here, any class implementing `serialization.CborSerializable` will be serialized using the `jackson-cbor` serializer.
+
+**2. HTTP Configuration**
+- `host-connection-pool.max-open-requests`: This setting specifies the maximum number of open requests in the HTTP host connection pool. It is set to 256.
+
+**3. Remote Communication Configuration**
+- `remote.artery`: This section configures the Artery transport (a remoting mechanism in Pekko).
+- `canonical.hostname`: This sets the hostname for the actor system, which is derived from `clustering.ip`.
+- `canonical.port`: This sets the port for the actor system, which is derived from `clustering.port`.
+- `large-message-destinations`: Specifies destinations for large messages. In this case, any destination matching the pattern `/temp/load-balancer-*` will be treated as a large message destination.
+
+**4. Cluster Configuration**
+- `seed-nodes`: Defines the initial contact points for the cluster, using placeholders for cluster name, seed IP, and seed port.
+- `roles`: Specifies the roles of the cluster node, derived from clustering.role.
+- `downing-provider-class`: Specifies the class for handling split-brain scenarios. Here, it's set to `SplitBrainResolverProvider`.
+ 
+**5. Http Server Configuration**
+- `http.port`: Sets the HTTP server port to 8080.
+- `http.host`: Sets the HTTP server host to 0.0.0.0, meaning it will bind to all available network interfaces.
+
+**6. Clustering Variables**
+- `ip`: Default IP address for clustering is 127.0.0.1. It can be overridden by the environment variable `CLUSTER_IP`.
+- `port`: Default port for clustering is 1600. It can be overridden by the environment variable `CLUSTER_PORT`.
+- `role`: Role of the cluster node, which can be set using the environment variable `CLUSTER_ROLE`.
+- `seed-ip`: Default seed IP address is 127.0.0.1. It can be overridden by `CLUSTER_IP` or `SEED_IP`.
+- `seed-port`: Default seed port is 1600. It can be overridden by the environment variable `SEED_PORT`.
+- `cluster.name`: Name of the cluster, set to `ClusterSystem`.
+
+This configuration file is designed to be flexible, allowing for environment-specific overrides while providing sensible defaults, it plays crucial role with running the pekko cluster within the containers.
+
+### 4.1 transformation.conf
+
+The project also requires a special configuration for capturing properties for domain objects such as `worker`, `load-balancer` and so on.
+
+```json
+include "application"
+
+transformation {
+  workers-per-node = 32
+  load-balancer = 3
+}
+```
+
+Here, it simply means that each node will have 32 worker actors and master node will have 3 load balancer actors.
+
+## 5. Cluster System
 
 
 
