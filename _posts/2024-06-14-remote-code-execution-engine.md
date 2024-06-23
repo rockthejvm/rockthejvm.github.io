@@ -130,7 +130,7 @@ Lot of details were skipped here, but they will be covered in the later parts of
 ## 4. Configuration
 
 Before writing any code let's check `resources/application.conf`:
-```json
+```hocon
 pekko {
   actor {
     provider = cluster
@@ -221,7 +221,7 @@ This configuration file is designed to be flexible, allowing for environment-spe
 
 The project also requires a special configuration for capturing properties for domain objects such as `worker`, `load-balancer` and so on.
 
-```json
+```hocon
 include "application"
 
 transformation {
