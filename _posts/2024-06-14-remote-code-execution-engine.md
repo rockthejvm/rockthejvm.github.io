@@ -25,7 +25,7 @@ There you go, sounds simple, right?
 
 Right, right... 
 
-Can you imagine how many things can go wrong here? It's the devil smirking in the corner, knowing, that the possibilities for failure are endless, however, we will address some of them.
+Can you imagine how many things can go wrong here? It's the devil smirking in the corner, knowing, that the possibilities for failure are endless, however, we should address at least some of them.
 
 To give you a quick idea: a separate blog post can be written only about the security, not to mention scalability, extensibility and a few other compulsory properties to make it production ready.
 
@@ -106,3 +106,33 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1") // SBT plugin for using 
 ```
 
 ## 3. Project Architecture
+
+After a few iterations I came up with the architecture that can be horizontally scaled, if required. 
+We have a `master` node and its role is to be the task distributor among `worker` nodes. 
+`http` is exposed on `master` node, acting as a gateway to outside world. 
+
+There are three main actors with their own responsibilities:
+- `Load Balancer`: lives on `master` node and knows how to find `Worker Router` actor within the pool of `worker` nodes
+- `Worker Router`: lives on `worker` node and simply assigns the `work` to one of the `Worker` actors
+- `Worker`: lives on `worker` node and actually does the job of code execution
+
+I omitted other actors for now, however we'll encounter `Code Executor` and `File Handler` actors later.
+
+### 3.1 Architecture Diagram
+
+![alt "Project skeleton"](../images/braindrill/diagram.png)
+
+Let's explain step by step what happens during code execution and then clarify why this approach was chosen.
+
+- User sends `python` code at POST `http://localhost/python`
+- `http` is exposed on `master` node and it processes the request
+- random `load balancer actor` sends message to `worker router actor` on some node
+- `worker router actor` sends message to `worker actor` which starts execution
+- `worker actor` responds to `load balancer actor` once the code is executed
+- `load balancer actor` forwards message to `http` and user receives the output
+
+I skipped a lot of details here, but this is what this blog post is all about, so let's dive in :)
+
+
+
+
