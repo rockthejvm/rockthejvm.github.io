@@ -250,8 +250,465 @@ Now, time to dig into the details.
 
 ### 5.1 Worker
 
-`Worker` actor will live on `worker` node and will be 
+Let's quickly evaluate what we would expect from `Worker`.
 
+`Worker` actor will live on `worker` node and will be reacting to `StartExecution` message. 
+
+Also, during runtime, it must be aware of which languages are supported, so that it quickly replies something like `ExecutionFailed` response with the message `"unsupported language"`.
+
+For successful case, we could have `ExecutionSucceeded` message that will be forwarded back to the original sender.
+
+How about making `Worker` actor work within a cluster? We said earlier that the `Worker` actor will be expecting messages from `master` node, here enters remoting and other good stuff. 
+
+Somehow, `Worker` actor must be discovered within `pekko` cluster so that messages can be routed to it, for that, we'll be using `ServiceKey` and later, `Router`-s which are special actors.
+
+So, keeping all this in mind the code could look like this:
+
+```scala
+package workers
+
+import org.apache.pekko.actor.typed.receptionist.ServiceKey
+import workers.children.FileHandler.In.PrepareFile
+import org.apache.pekko.actor.typed.{ActorRef, Behavior}
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import serialization.CborSerializable
+import workers.children.FileHandler
+
+import scala.util.*
+
+object Worker:
+
+  // this enables Worker to be discovered by actors living on other nodes
+  val WorkerRouterKey = ServiceKey[Worker.StartExecution]("worker-router.StartExecution")
+
+  // simple model for grouping compiler, file extension and docker image for the programming language
+  private final case class LanguageSpecifics(
+      compiler: String,
+      extension: String,
+      dockerImage: String
+  )
+
+  // language specifics per language
+  private val languageSpecifics: Map[String, LanguageSpecifics] =
+    Map(
+      "java" -> LanguageSpecifics(
+        compiler = "java",
+        extension = ".java",
+        dockerImage = "openjdk:17"
+      ),
+      "python" -> LanguageSpecifics(
+        compiler = "python3",
+        extension = ".py",
+        dockerImage = "python"
+      ),
+      "ruby" -> LanguageSpecifics(
+        compiler = "ruby",
+        extension = ".ruby",
+        dockerImage = "ruby"
+      ),
+      "perl" -> LanguageSpecifics(
+        compiler = "perl",
+        extension = ".pl",
+        dockerImage = "perl"
+      ),
+      "javascript" -> LanguageSpecifics(
+        compiler = "node",
+        extension = ".js",
+        dockerImage = "node"
+      ),
+      "php" -> LanguageSpecifics(
+        compiler = "php",
+        extension = ".php",
+        dockerImage = "php"
+      )
+    )
+  
+  // a parent type for modeling incoming messages
+  sealed trait In
+
+  final case class StartExecution(
+      code: String,
+      language: String,
+      replyTo: ActorRef[Worker.ExecutionResult]
+  ) extends In
+      with CborSerializable
+
+  // a parent type that models successful and failed executions
+  sealed trait ExecutionResult extends In:
+    def value: String
+
+  final case class ExecutionSucceeded(value: String) extends ExecutionResult with CborSerializable
+  final case class ExecutionFailed(value: String) extends ExecutionResult with CborSerializable
+
+  // constructor for creating Behavior[In]
+  def apply(workerRouter: Option[ActorRef[Worker.ExecutionResult]] = None): Behavior[In] =
+    Behaviors.setup[In]: ctx =>
+      val self = ctx.self
+
+      Behaviors.receiveMessage[In]:
+        case msg @ StartExecution(code, lang, replyTo) =>
+          ctx.log.info(s"{} processing StartExecution", self)
+          languageSpecifics get lang match
+            case Some(specifics) =>
+              val fileHandler = ctx.spawn(FileHandler(), s"file-handler")
+              ctx.log.info(s"{} sending PrepareFile to {}", self, fileHandler)
+
+              fileHandler ! FileHandler.In.PrepareFile(
+                name =
+                  s"$lang${Random.nextInt}${specifics.extension}", // random number for avoiding file overwrite/shadowing
+                compiler = specifics.compiler,
+                dockerImage = specifics.dockerImage,
+                code = code,
+                replyTo = ctx.self
+              )
+            case None =>
+              val reason = s"unsupported language: $lang"
+              ctx.log.warn(s"{} failed execution due to: {}", self, reason)
+
+              replyTo ! Worker.ExecutionFailed(reason)
+
+          // register original requester
+          apply(workerRouter = Some(replyTo))
+
+        case msg @ ExecutionSucceeded(result) =>
+          ctx.log.info(s"{} sending ExecutionSucceeded to {}", self, workerRouter)
+          workerRouter.foreach(_ ! msg)
+
+          apply(workerRouter = None)
+
+        case msg @ ExecutionFailed(reason) =>
+          ctx.log.info(s"{} sending ExecutionFailed to {}", self, workerRouter)
+          workerRouter.foreach(_ ! msg)
+
+          apply(workerRouter = None)
+```
+
+So, `Worker` actor is designed to handle code execution requests for various programming languages. Here's a concise breakdown:
+
+- `ServiceKey`: `WorkerRouterKey` enables the actor to be discovered across different nodes.
+- `LanguageSpecifics`: A case class and a map define compiler, file extension, and Docker image specifics for each supported programming language.
+- `Messages`: The `In` trait and its implementations (`StartExecution`, `ExecutionResult`, `ExecutionSucceeded`, `ExecutionFailed`) model the messages the actor can handle.
+- `Behavior Setup`: The `apply` method sets up the actor's behavior, processing incoming messages.
+- On `StartExecution`, it logs the event, checks for language support, and spawns a `FileHandler` actor to handle file preparation. If the language isn't supported, it responds with `ExecutionFailed`.
+- On `ExecutionSucceeded` and `ExecutionFailed`, it logs the outcome and sends the result back to the requester.
+- `ActorRef Management`: Manages the original requester (`workerRouter` which will be defined later) to send back execution results.
+- The imports `import workers.children.FileHandler.In.PrepareFile` and `import workers.children.FileHandler` will be covered later, focusing on file preparation logic.
+
+With this, we can move to `FileHandler`.
+
+### 5.2 File Handler
+
+`File Handler` will be a local child actor for the `Worker` actor on the same `worker` node.
+
+We've already seen `PrepareFile` message mentioned in `Worker` actor, but there must also be defined something like `FilePrepared` and `FilePreparationFailed` messages for covering both possible outcomes.
+
+If file will be created, `File Handler` should simply proceed with code execution, otherwise it must report why the process failed.
+
+With those expectations in mind, the code could look like:
+
+```scala
+package workers.children
+
+import org.apache.pekko.actor.typed.{ActorRef, Terminated}
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import org.apache.pekko.stream.scaladsl.{FileIO, Source}
+import org.apache.pekko.util.ByteString
+import workers.children.FileHandler.In.PrepareFile
+import workers.Worker
+
+import java.io.File
+import java.nio.file.Path
+import scala.concurrent.Future
+import scala.util.*
+
+object FileHandler:
+
+  enum In:
+    case PrepareFile(
+        name: String,
+        code: String,
+        compiler: String,
+        dockerImage: String,
+        replyTo: ActorRef[Worker.In]
+    )
+    case FilePrepared(
+        compiler: String,
+        file: File,
+        dockerImage: String,
+        replyTo: ActorRef[Worker.In]
+    )
+    case FilePreparationFailed(why: String, replyTo: ActorRef[Worker.In])
+
+  def apply() = Behaviors
+    .receive[In]: (ctx, msg) =>
+      import CodeExecutor.In.*
+      import ctx.executionContext
+      import ctx.system
+
+      val self = ctx.self
+
+      ctx.log.info(s"{}: processing {}", self, msg)
+
+      msg match
+        case In.PrepareFile(name, code, compiler, dockerImage, replyTo) =>
+          val filepath = s"/data/$name"
+          val asyncFile = for
+            file <- Future(File(filepath))
+            _ <- Source
+              .single(code)
+              .map(ByteString.apply)
+              .runWith(FileIO.toPath(Path.of(filepath)))
+          yield file
+
+          ctx.pipeToSelf(asyncFile):
+            case Success(file) => In.FilePrepared(compiler, file, dockerImage, replyTo)
+            case Failure(why)  => In.FilePreparationFailed(why.getMessage, replyTo)
+
+          Behaviors.same
+
+        case In.FilePrepared(compiler, file, dockerImage, replyTo) =>
+          val codeExecutor = ctx.spawn(CodeExecutor(), "code-executor")
+          // observe child for self-destruction
+          ctx.watch(codeExecutor)
+          ctx.log.info("{} prepared file, sending Execute to {}", self, codeExecutor)
+          codeExecutor ! Execute(compiler, file, dockerImage, replyTo)
+
+          Behaviors.same
+
+        case In.FilePreparationFailed(why, replyTo) =>
+          ctx.log.warn(
+            "{} failed during file preparation due to {}, sending ExecutionFailed to {}",
+            self,
+            why,
+            replyTo
+          )
+          replyTo ! Worker.ExecutionFailed(why)
+
+          Behaviors.stopped
+    .receiveSignal:
+      case (ctx, Terminated(ref)) =>
+        ctx.log.info(s"{} is stopping because child actor: {} was stopped", ctx.self, ref)
+
+        Behaviors.stopped
+```
+
+The details:
+- `Messages`: The `In` enum defines messages the actor can handle, including `PrepareFile`, `FilePrepared`, and `FilePreparationFailed`.
+- `Behavior Setup`: The `apply` method sets up the actor's behavior
+- On receiving `PrepareFile`, it logs the event, attempts to write the code to a file asynchronously, and uses `pipeToSelf` pattern to handle the result.
+- On `FilePrepared`, it spawns a `CodeExecutor` actor to execute the code, watches it for termination, and sends an `Execute` message to the executor.
+- On `FilePreparationFailed`, it logs the failure and sends an `ExecutionFailed` message back to the requester.
+ 
+And we arrived at the point where we can talk about the most important actor - `CodeExecutor`.
+
+## 5.3 CodeExecutor
+
+`CodeExecutor` actor will be a child of the local `FileHandler` actor on the same `worker` node.
+
+The main responsibility for `CodeExecutor` is to execute code and return the output.
+
+`CodeExecutor` actor is complex in nature due to the following reasons:
+- code must be executed in a short-lived docker container
+- code can cause memory issues
+- code can cause cpu issues
+- code can result in an accidental infinite loop
+
+and so on...
+
+To tackle all this, we need to write a special logic and model the aforementioned concepts in a good way.
+
+After struggling with those issues for a week or so, I managed to define `CodeExecutor` in the following way:
+
+```scala
+package workers.children
+
+import org.apache.pekko.actor.typed.ActorRef
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import org.apache.pekko.stream.IOResult
+import org.apache.pekko.stream.scaladsl.{Sink, Source, StreamConverters}
+import org.apache.pekko.util.ByteString
+import workers.Worker
+
+import java.io.{File, InputStream}
+import scala.concurrent.{ExecutionContext, Future}
+import scala.util.*
+import scala.util.control.NoStackTrace
+
+object CodeExecutor:
+
+  private val KiloByte = 1024 // 1024 bytes
+  private val MegaByte = KiloByte * KiloByte // 1,048,576 bytes
+  private val TwoMegabytes = 2 * MegaByte // 2,097,152 bytes
+
+  private val AdjustedMaxSizeInBytes =
+    (TwoMegabytes * 20) / 100 // 419,430 bytes, which is approx 409,6 KB or 0.4 MB
+
+  // max size of output when the code is run, if it exceeds the limit then we let the user know to reduce logs or printing
+  private val MaxOutputSize = AdjustedMaxSizeInBytes
+
+  enum In:
+    case Execute(compiler: String, file: File, dockerImage: String, replyTo: ActorRef[Worker.In])
+    case Executed(output: String, exitCode: Int, replyTo: ActorRef[Worker.In])
+    case ExecutionFailed(why: String, replyTo: ActorRef[Worker.In])
+    case ExecutionSucceeded(output: String, replyTo: ActorRef[Worker.In])
+
+  private case object TooLargeOutput extends Throwable with NoStackTrace {
+    override def getMessage: String =
+      "the code is generating too large output, try reducing logs or printing"
+  }
+
+  def apply() = Behaviors.receive[In]: (ctx, msg) =>
+    import Worker.*
+    import ctx.executionContext
+    import ctx.system
+
+    val self = ctx.self
+
+    msg match
+      case In.Execute(compiler, file, dockerImage, replyTo) =>
+        ctx.log.info(s"{}: executing submitted code", self)
+        val asyncExecuted: Future[In.Executed] = for
+          // timeout --signal=SIGKILL 2 docker run --rm --ulimit cpu=1 --memory=20m -v engine:/data -w /data rust rust /data/r.rust
+          ps <- run(
+            "timeout",
+            "--signal=SIGKILL",
+            "2", // 2 second timeout which sends SIGKILL if exceeded
+            "docker",
+            "run",
+            "--rm", // remove the container when it's done
+            "--ulimit", // set limits
+            "cpu=1", // 1 processor
+            "--memory=20m", // 20 M of memory
+            "-v", // bind volume
+            "engine:/data",
+            "-w", // set working directory to /data
+            "/data",
+            dockerImage,
+            compiler,
+            s"${file.getPath}"
+          )
+          // error and success channels as streams
+          (successSource, errorSource) = src(ps.getInputStream) -> src(ps.getErrorStream)
+          ((success, error), exitCode) <- successSource
+            .runWith(readOutput) // join success, error and exitCode
+            .zip(errorSource.runWith(readOutput))
+            .zip(Future(ps.waitFor))
+          _ = Future(file.delete) // remove file in the background to free up the memory
+        yield In.Executed(
+          output = if success.nonEmpty then success else error,
+          exitCode = exitCode,
+          replyTo = replyTo
+        )
+
+        ctx.pipeToSelf(asyncExecuted):
+          case Success(executed) =>
+            ctx.log.info("{}: executed submitted code", self)
+            executed.exitCode match
+              case 124 | 137 =>
+                In.ExecutionFailed(
+                  "The process was aborted because it exceeded the timeout",
+                  replyTo
+                )
+              case 139 =>
+                In.ExecutionFailed(
+                  "The process was aborted because it exceeded the memory usage",
+                  replyTo
+                )
+              case _ => In.ExecutionSucceeded(executed.output, replyTo)
+          case Failure(exception) =>
+            ctx.log.warn("{}: execution failed due to {}", self, exception.getMessage)
+            In.ExecutionFailed(exception.getMessage, replyTo)
+
+        Behaviors.same
+
+      case In.ExecutionSucceeded(output, replyTo) =>
+        ctx.log.info(s"{}: executed submitted code successfully", self)
+        replyTo ! Worker.ExecutionSucceeded(output)
+
+        Behaviors.stopped
+
+      case In.ExecutionFailed(why, replyTo) =>
+        ctx.log.warn(s"{}: execution failed due to {}", self, why)
+        replyTo ! Worker.ExecutionFailed(why)
+
+        Behaviors.stopped
+
+  private def readOutput(using ec: ExecutionContext): Sink[ByteString, Future[String]] =
+    Sink
+      .fold[String, ByteString]("")(_ + _.utf8String)
+      .mapMaterializedValue:
+        _.flatMap: str =>
+          if str.length > MaxOutputSize then Future failed TooLargeOutput
+          else Future successful str
+
+  private def src(stream: => InputStream): Source[ByteString, Future[IOResult]] =
+    StreamConverters.fromInputStream(() => stream)
+
+  private def run(commands: String*)(using ec: ExecutionContext) =
+    Future(sys.runtime.exec(commands.toArray))
+```
+
+Here it's worth going into details since it's the meat of the whole project.
+
+#### Constants and Imports
+
+1. **Constants**:
+    - `KiloByte`, `MegaByte`, `TwoMegabytes`: Constants for byte size calculations.
+    - `AdjustedMaxSizeInBytes`: Adjusted max size for output (approximately 409.6 KB).
+    - `MaxOutputSize`: Maximum allowed output size for the code execution.
+
+2. **Imports**:
+    - Imports various `Pekko` and `Scala` utilities for actor behavior, stream handling, and future operations.
+
+#### Messages (`In`)
+The `In` enum defines messages the actor can handle:
+- `Execute`: Message to execute a given file with a specific compiler and Docker image, and send the result to the specified `ActorRef`.
+- `Executed`: Message indicating the execution result, including output and exit code.
+- `ExecutionFailed`: Message indicating the execution failed with a reason.
+- `ExecutionSucceeded`: Message indicating the execution succeeded with the output.
+
+#### Throwable for Large Output
+A custom `TooLargeOutput` throwable is defined to handle scenarios where the code output exceeds the allowed size.
+
+#### Behavior Definition
+The `apply` method defines the actor's behavior using Akka's `Behaviors.receive` method:
+
+#### `In.Execute` case
+1. **Logging**: Logs that code execution has started.
+2. **Running Docker Command**: Constructs and runs a Docker command with a 2-second timeout and memory limits.
+    - The Docker command binds the `engine` volume, sets the working directory to `/data`, and runs the provided compiler and file within the specified Docker image.
+3. **Handling Streams**: Handles both the standard and error streams from the Docker process.
+4. **Reading Output**: Reads the success and error streams and joins them with the exit code.
+5. **Deleting File**: Schedules the file for deletion to free up memory.
+6. **Piping Result**: Uses `ctx.pipeToSelf` to handle the asynchronous execution result.
+    - On success, checks the exit code and constructs appropriate messages (`ExecutionFailed` for specific exit codes or `ExecutionSucceeded`).
+    - On failure, logs the exception and constructs an `ExecutionFailed` message.
+
+#### `In.ExecutionSucceeded` case
+1. **Logging**: Logs successful execution.
+2. **Replying**: Sends an `ExecutionSucceeded` message to the requester.
+3. **Stopping Behavior**: Stops the actor.
+
+#### `In.ExecutionFailed` case
+1. **Logging**: Logs the failure reason.
+2. **Replying**: Sends an `ExecutionFailed` message to the requester.
+3. **Stopping Behavior**: Stops the actor.
+
+#### Helper Methods
+1. **readOutput**: Defines a sink that reads ByteString input, converts it to a UTF-8 string, and checks if the output size exceeds the maximum allowed size.
+2. **src**: Creates a source from an input stream.
+3. **run**: Executes a command using `sys.runtime.exec` and returns a future of the process.
+
+#### Detailed Workflow
+1. **Execution Start**: When the `Execute` message is received, the actor starts by logging the event.
+2. **Docker Command**: It then constructs and runs the Docker command with specified limits.
+3. **Stream Handling**: Both the success and error streams from the Docker process are handled and read concurrently.
+4. **Output Management**: The output is read and checked against the maximum allowed size.
+5. **File Deletion**: The file is scheduled for deletion to free up memory.
+6. **Result Handling**: The result of the execution (success or failure) is handled and appropriate messages are constructed and sent to the requester.
+7. **Actor Lifecycle**: Depending on the message (`ExecutionSucceeded` or `ExecutionFailed`), the actor stops itself after sending the reply.
+
+This code ensures that code execution is managed efficiently within a controlled environment (Docker) and handles different outcomes (success, failure, timeouts, and memory limits) gracefully.
 
 
 
