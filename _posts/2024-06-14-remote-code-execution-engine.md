@@ -108,6 +108,9 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1") // SBT plugin for using 
 ## 3. Project Architecture
 
 After a few iterations I came up with the architecture that can be horizontally scaled, if required. 
+Ideally, such projects must be scaled easily as long as the load is increased. For that we use tools such as Kubernetes or other container orchestration platforms.
+Kubernetes is out of scope of this project, however, to make local development and deployment simpler we'll be using docker containers. 
+
 We have a `master` node and its role is to be the task distributor among `worker` nodes. 
 `http` is exposed on `master` node, acting as a gateway to outside world.
 
@@ -129,7 +132,7 @@ Lot of details were skipped here, but they will be covered in the later parts of
 
 ## 4. Configuration
 
-Before writing any code let's check `resources/application.conf`:
+Before writing any code let's check `resources/application.conf` which is defined in [HOCON format](https://docs.spongepowered.org/stable/en/server/getting-started/configuration/hocon.html):
 ```hocon
 pekko {
   actor {
@@ -231,8 +234,27 @@ transformation {
 ```
 
 Here, it simply means that each node will have 32 worker actors and master node will have 3 load balancer actors.
+In real world, choosing those numbers would depend on multiple variables that must be collected and analyzed in production.
+In my opinion, those numbers are optimized based on empirical evidence rather than theoretical results.
 
-## 5. Cluster System
+## 5. Actors
+
+In this section we will write the code for actors that will do the real job - code execution.
+
+Those actors will be:
+- `Worker`: actor that initiates code execution
+- `FileHandler`: child actor of `Worker` which prepares the temporary file before executing it
+- `CodeExecutor`: child actor of `FileHandler` which starts the process and collects output
+
+Now, time to dig into the details.
+
+### 5.1 Worker
+
+`Worker` actor will live on `worker` node and will be 
+
+
+
+
 
 
 
