@@ -146,7 +146,236 @@ Disadvantages:
 - Security risk: Access to host Docker daemon.
 - Less isolation: Shared daemon.
 
-Let's move on to app configuration.
+### 3.3 docker-compose
+
+Since we want to run a `pekko` cluster we could use `docker-compose` and its declarative definitions for cluster components such as `master` and `worker` nodes, with shared volume, image names, ports mappings, environment variables and so on.
+
+```yaml
+version: '3'
+services:
+  master:
+    image: braindrill:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: 'master'
+    tty: true
+    stdin_open: true
+    ports:
+      - '1600:1600'
+      - '8080:8080'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - engine:/data
+    working_dir: /app
+    environment:
+      CLUSTER_IP: 'master'
+      CLUSTER_PORT: '1600'
+      CLUSTER_ROLE: 'master'
+      SEED_IP: 'master'
+  worker-1:
+    image: braindrill:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    tty: true
+    stdin_open: true
+    ports:
+      - '17350:17350'
+    security_opt:
+      - 'seccomp=unconfined'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - engine:/data
+    working_dir: /app
+    environment:
+      CLUSTER_IP: 'worker-1'
+      CLUSTER_PORT: '17350'
+      CLUSTER_ROLE: 'worker'
+      SEED_IP: 'master'
+      SEED_PORT: '1600'
+  worker-2:
+    image: braindrill:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    tty: true
+    stdin_open: true
+    ports:
+      - '17351:17351'
+    security_opt:
+      - 'seccomp=unconfined'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - engine:/data
+    working_dir: /app
+    environment:
+      CLUSTER_IP: 'worker-2'
+      CLUSTER_PORT: '17351'
+      CLUSTER_ROLE: 'worker'
+      SEED_IP: 'master'
+      SEED_PORT: '1600'
+  worker-3:
+    image: braindrill:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    tty: true
+    stdin_open: true
+    ports:
+      - '17352:17352'
+    security_opt:
+      - 'seccomp=unconfined'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - engine:/data
+    working_dir: /app
+    environment:
+      CLUSTER_IP: 'worker-3'
+      CLUSTER_PORT: '17352'
+      CLUSTER_ROLE: 'worker'
+      SEED_IP: 'master'
+      SEED_PORT: '1600'
+
+volumes:
+  engine:
+    external: true
+```
+
+This `docker-compose.yaml` file sets up a `Pekko` cluster with one `master` and three `worker` services. 
+
+Key points include:
+
+1. **Version:** Uses Docker Compose version 3.
+2. **Services:** Defines four services - `master`, `worker-1`, `worker-2`, and `worker-3`.
+
+**Master:**
+- **Image:** Uses `braindrill:latest` and builds from the Dockerfile in the current context. `braindrill` image will be built using a special `Dockerfile` definition which will be covered later. For better automation, we could write a deployment shell script that automates all those details. 
+- **Container Name:** `master`
+- **Ports:** Maps `1600:1600` and `8080:8080`.
+- **Volumes:** Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files where user code will be written.
+- **Environment Variables:** Sets cluster details (`CLUSTER_IP`, `CLUSTER_PORT`, `CLUSTER_ROLE`, `SEED_IP`).
+
+**Workers:**
+- **Image:** Uses `braindrill:latest` and builds from the Dockerfile in the current context.
+- **Ports:** Each worker maps a unique port (`17350`, `17351`, `17352`).
+- **Security:** Disables default security profiles (`seccomp=unconfined`).
+- **Volumes:** Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files where user code will be written.
+- **Environment Variables:** Sets cluster and seed details for each worker.
+
+**Common Settings:**
+- **TTY and stdin_open:** Enabled for interactive use.
+- **Working Directory:** `/app`.
+
+**Volumes:**
+- **Engine:** An external volume named `engine`.
+
+### 3.4 Dockerfile
+
+Dockerfile is pretty simple and self explanatory:
+
+```shell
+# Use an official OpenJDK runtime as a parent image
+FROM hseeberger/scala-sbt:17.0.2_1.6.2_3.1.1
+
+# Update the repository sources list and install required packages
+RUN apt-get update && \
+    apt-get install -y \
+    docker.io
+
+# Set the working directory to /tmp
+WORKDIR /app
+
+# Copy the current directory contents into the container at /app
+COPY . /app
+
+# Build the Scala project
+RUN sbt clean assembly
+
+# Run application when the container launches
+ENTRYPOINT ["java", "-jar", "target/scala-3.4.1/braindrill.jar"]
+```
+
+### 3.5 deployment shell script
+
+```shell
+#!/bin/bash
+
+# Function to print help message
+print_help() {
+    echo "Usage: $0 [rebuild]"
+    echo "  rebuild   Add --build flag to docker-compose up"
+}
+
+# Check for the "rebuild" argument
+DOCKER_COMPOSE_CMD="docker-compose up"
+if [ "$1" == "rebuild" ]; then
+    DOCKER_COMPOSE_CMD="docker-compose up --build"
+elif [ -n "$1" ]; then
+    print_help
+    exit 1
+fi
+
+# Create Docker volume if it doesn't exist
+VOLUME_NAME="engine"
+if docker volume inspect "$VOLUME_NAME" > /dev/null 2>&1; then
+  echo "Docker volume '$VOLUME_NAME' already exists."
+else
+  echo "Creating Docker volume '$VOLUME_NAME'."
+  docker volume create "$VOLUME_NAME"
+fi
+
+# Docker images to be pulled
+DOCKER_IMAGES=(
+  "openjdk:17"
+  "python"
+  "node"
+  "ruby"
+  "perl"
+  "php"
+)
+
+# Pull Docker images in parallel if they don't already exist
+for IMAGE in "${DOCKER_IMAGES[@]}"; do
+  if docker image inspect "$IMAGE" > /dev/null 2>&1; then
+    echo "Docker image '$IMAGE' already exists."
+  else
+    echo "Pulling Docker image '$IMAGE' in the background."
+    docker pull "$IMAGE" &
+  fi
+done
+
+# Wait for all background jobs to complete
+wait
+echo "All Docker images pulled."
+
+echo "Running command: $DOCKER_COMPOSE_CMD"
+$DOCKER_COMPOSE_CMD
+```
+
+This deployment shell script sets up a Docker environment and optionally rebuilds the Docker images. Key points include:
+
+1. **Help Function:**
+   - Provides usage instructions for the script.
+
+2. **Rebuild Argument Check:**
+   - If "rebuild" is passed as an argument, the script adds `--build` to the `docker-compose up` command.
+   - If an unrecognized argument is passed, it prints the help message and exits.
+
+3. **Docker Volume Management:**
+   - Checks if a Docker volume named `engine` exists.
+   - If not, it creates the volume which is necessary for worker containers to access temporary files to be executed later
+
+4. **Docker Image Management:**
+   - Defines a list of Docker images to be pulled (`openjdk:17`, `python`, `node`, `ruby`, `perl`, `php`).
+   - Checks if each image exists locally and pulls it in the background if it does not.
+
+5. **Parallel Image Pulling:**
+   - Uses background jobs to pull Docker images simultaneously for efficiency.
+   - Waits for all background jobs to complete.
+
+6. **Run Docker Compose:**
+   - Executes the `docker-compose up` command, with or without the `--build` flag based on the initial argument.
 
 ## 4. Configuration
 
@@ -888,6 +1117,10 @@ The code above sets up an `Pekko` cluster with `worker` and `master` nodes.
 - `HTTP POST` request with code is received.
 - A random `load balancer` forwards the request to a `worker` router.
 - The `worker` router assigns the task to a worker actor, which executes the code and returns the result.
+
+With that we finish the part which is concerned with code.
+
+Let's move on to shell scripts and all that good stuff.
 
 
 
