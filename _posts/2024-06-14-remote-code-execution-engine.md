@@ -128,7 +128,25 @@ Let's explain step by step what happens during code execution:
 - `worker` responds to `load balancer` once the code is executed
 - `load balancer` forwards message to `http` and user receives the output
 
-Lot of details were skipped here, but they will be covered in the later parts of the blog post.
+### 3.2 Docker runtime
+
+There are a few options to my knowledge for executing the submitted code with the help of docker containers. All I can do is redirect you to the great [StackOverflow post](https://stackoverflow.com/questions/27879713/is-it-ok-to-run-docker-from-inside-docker) which expands on this issue.
+
+Long story short, I decided to go with [DooD - Docker out of Docker](https://tdongsi.github.io/blog/2017/04/23/docker-out-of-docker/) approach which has negligible disadvantages.
+
+`DooD` Uses the host's Docker daemon by mounting `/var/run/docker.sock` into the container.
+
+Advantages:
+- Efficient: Direct use of host resources.
+- Simple: No extra Docker daemons.
+- Fast: No nested virtualization overhead.
+- Resource-efficient: Shared daemon optimizes resource use.
+
+Disadvantages:
+- Security risk: Access to host Docker daemon.
+- Less isolation: Shared daemon.
+
+Let's move on to app configuration.
 
 ## 4. Configuration
 
@@ -232,10 +250,22 @@ transformation {
   load-balancer = 3
 }
 ```
-
 Here, it simply means that each node will have 32 worker actors and master node will have 3 load balancer actors.
 In real world, choosing those numbers would depend on multiple variables that must be collected and analyzed in production.
 In my opinion, those numbers are optimized based on empirical evidence rather than theoretical results.
+
+### 4.2 Serialization
+
+Since we're building a cluster we need to keep in mind that actor messages must be serialized over wire. It means that messages could be sent from JVM to JVM which requires enabling the serialization protocol. 
+
+For that we need a simple trait definition under `serialization` package, as we've already defined in configuration.
+
+```scala
+package serialization
+
+// just a marker trait to tell pekko to serialize messages into CBOR using Jackson for sending over the network
+trait CborSerializable
+```
 
 ## 5. Actors
 
@@ -710,8 +740,154 @@ The `apply` method defines the actor's behavior using Akka's `Behaviors.receive`
 
 This code ensures that code execution is managed efficiently within a controlled environment (Docker) and handles different outcomes (success, failure, timeouts, and memory limits) gracefully.
 
+Now we can move on and talk about the clustering stuff.
 
+## 6 - Pekko Cluster
 
+In a distributed system, efficiently managing and coordinating tasks across multiple nodes is crucial for performance and scalability. Pekko, a robust toolkit for building highly concurrent, distributed, and resilient message-driven applications, offers powerful features for creating such systems. In this context, our code should implement a cluster system with distinct roles for `worker` and `master` nodes.
+
+#### Components and Their Roles
+
+1. **Cluster and Node Configuration:**
+   - The cluster is initialized using `Cluster(ctx.system)`, and the node's roles and configuration settings are obtained.
+
+2. **Worker Nodes:**
+   - **Worker Router:**
+      - Each `worker` node should initialize a pool of `worker` actors using a `Round Robin` routing strategy. The pool size is configurable via `transformation.workers-per-node`.
+      - The worker router is registered with the `Receptionist`, making it discoverable across the cluster.
+
+3. **Master Node:**
+   - **Load Balancers:**
+      - A pool of load balancers forwards execution tasks to the worker routers. The pool size is configurable via `transformation.load-balancer`.
+      - Each load balancer uses group routing to distribute tasks to remote worker routers.
+
+4. **HTTP Server:**
+   - The `master` node sets up an HTTP server to accept task submissions. It listens on a configurable host and port.
+   - Incoming tasks are forwarded to a randomly selected load balancer, which then distributes them to the worker nodes.
+
+#### Justification for the Components
+
+1. **Efficiency and Scalability:**
+   - Using a cluster setup with dedicated `worker` and `master` nodes allows for efficient task distribution and parallel processing.
+   - The `Round Robin` routing of `worker` actors and load balancers ensures balanced workload distribution.
+
+2. **Dynamic Discovery and Registration:**
+   - The `Receptionist` enables dynamic discovery of `worker` routers across the cluster, facilitating seamless scaling and fault tolerance.
+
+3. **Robust and Resilient Execution:**
+   - Supervisory strategies for `worker` actors enhance fault tolerance by restarting actors on failure.
+   - The use of `ask` patterns with timeouts ensures that task submissions are handled gracefully, even in the event of errors.
+
+4. **Configurability:**
+   - Key parameters like the number of workers, load balancers, and server settings are configurable, allowing for flexibility and adaptability to different environments and workloads.
+
+By leveraging these components and strategies, the cluster system can efficiently manage and distribute tasks across multiple nodes, providing a robust solution for distributed computing scenarios.
+
+Keeping in mind all this, we could translate those expectations in code:
+
+```scala
+package cluster
+
+import workers.Worker
+import org.apache.pekko
+import org.apache.pekko.actor.typed.receptionist.Receptionist
+import org.apache.pekko.actor.typed.scaladsl.Behaviors
+import org.apache.pekko.cluster.typed.Cluster
+import pekko.actor.typed.{ActorSystem, Behavior}
+import pekko.http.scaladsl.Http
+import pekko.http.scaladsl.server.Directives.*
+import org.apache.pekko.util.Timeout
+import pekko.actor.typed.scaladsl.AskPattern.schedulerFromActorSystem
+import pekko.actor.typed.scaladsl.AskPattern.Askable
+import pekko.actor.typed.*
+import pekko.actor.typed.scaladsl.*
+import workers.Worker.*
+
+import scala.concurrent.ExecutionContextExecutor
+import scala.concurrent.duration.*
+import scala.util.*
+
+object ClusterSystem:
+
+  def apply(): Behavior[Nothing] = Behaviors.setup[Nothing]: ctx =>
+
+    import ctx.executionContext
+
+    val cluster = Cluster(ctx.system)
+    val node = cluster.selfMember
+    val cfg = ctx.system.settings.config
+
+    if node hasRole "worker" then
+      val numberOfWorkers = Try(cfg.getInt("transformation.workers-per-node")).getOrElse(50)
+      // actor that sends StartExecution message to local Worker actors in a round robin fashion
+      val workerRouter = ctx.spawn(
+        behavior = Routers
+          .pool(numberOfWorkers) {
+            Behaviors
+              .supervise(Worker().narrow[StartExecution])
+              .onFailure(SupervisorStrategy.restart)
+          }
+          .withRoundRobinRouting(),
+        name = "worker-router"
+      )
+      // actors are registered to the ActorSystem receptionist using a special ServiceKey.
+      // All remote worker-routers will be registered to ClusterSystem actor system receptionist.
+      // When the "worker" node starts it registers the local worker-router to the Receptionist which is cluster-wide
+      // As a result "master" node can have access to remote worker-router and receive any updates about workers through worker-router
+      ctx.system.receptionist ! Receptionist.Register(Worker.WorkerRouterKey, workerRouter)
+
+    if node hasRole "master" then
+      given system: ActorSystem[Nothing] = ctx.system
+      given ec: ExecutionContextExecutor = ctx.executionContext
+      given timeout: Timeout = Timeout(3.seconds)
+
+      val numberOfLoadBalancers = Try(cfg.getInt("transformation.load-balancer")).getOrElse(3)
+      // pool of load balancers that forward StartExecution message to the remote worker-router actors in a round robin fashion
+      val loadBalancers = (1 to numberOfLoadBalancers).map: n =>
+        ctx.spawn(
+          behavior =
+            Routers
+              .group(Worker.WorkerRouterKey)
+              .withRoundRobinRouting(), // routes StartExecution message to the remote worker-router
+          name = s"load-balancer-$n"
+        )
+
+      val route =
+        pathPrefix("lang" / Segment): lang =>
+          post:
+            entity(as[String]): code =>
+              val loadBalancer = Random.shuffle(loadBalancers).head
+              val asyncResponse = loadBalancer
+                .ask[ExecutionResult](StartExecution(code, lang, _))
+                .map(_.value)
+                .recover(_ => "something went wrong")
+
+              complete(asyncResponse)
+
+      val host = Try(cfg.getString("http.host")).getOrElse("0.0.0.0")
+      val port = Try(cfg.getInt("http.port")).getOrElse(8080)
+
+      Http()
+        .newServerAt(host, port)
+        .bind(route)
+
+      ctx.log.info("Server is listening on {}:{}", host, port)
+
+    Behaviors.empty[Nothing]
+```
+
+The code above sets up an `Pekko` cluster with `worker` and `master` nodes.
+
+1. **Receptionist:** Registers the `worker` routers so they can be discovered cluster-wide.
+2. **HTTP Server:** On the `master` node, it starts an `HTTP` server to accept code execution requests.
+3. **Configuration:** Reads settings for the number of `workers`, `load balancers`, and `HTTP` server details.
+4. **Worker Router:** Each `worker` node creates a pool of ``worker actors using `round-robin` routing.
+5. **Load-Balancer:** The `master` node creates `load balancers` to forward tasks to `worker` routers.
+
+**Algorithm for Code Execution:**
+- `HTTP POST` request with code is received.
+- A random `load balancer` forwards the request to a `worker` router.
+- The `worker` router assigns the task to a worker actor, which executes the code and returns the result.
 
 
 
