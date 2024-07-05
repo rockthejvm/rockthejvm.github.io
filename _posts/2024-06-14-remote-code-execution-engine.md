@@ -108,10 +108,14 @@ addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "2.1.1") // SBT plugin for using 
 ## 3. Project Architecture
 
 After a few iterations I came up with the architecture that can be horizontally scaled, if required. 
-Ideally, such projects must be scaled easily as long as the load is increased. For that we use tools such as Kubernetes or other container orchestration platforms.
-Kubernetes is out of scope of this project, however, to make local development and deployment simpler we'll be using docker containers. 
+Ideally, such projects must be scaled easily as long as the load is increased. 
+
+For that we use tools such as Kubernetes or other container orchestration platforms. To make local development and deployment simpler we'll be using docker containers. More precisely we'll be using `docker-compose` to run a few containers together so that they form the cluster.
+
+`docker-compose` doesn't support scalability out of the box because it's static, it means that we can't magically add new `worker` node to the running system. Again, for that we'd use Kubernetes, but it is out of the scope of this project.
 
 We have a `master` node and its role is to be the task distributor among `worker` nodes. 
+
 `http` is exposed on `master` node, acting as a gateway to outside world.
 
 ### 3.1 Architecture Diagram
@@ -132,11 +136,19 @@ Let's explain step by step what happens during code execution:
 
 There are a few options to my knowledge for executing the submitted code with the help of docker containers. All I can do is redirect you to the great [StackOverflow post](https://stackoverflow.com/questions/27879713/is-it-ok-to-run-docker-from-inside-docker) which expands on this issue.
 
-Long story short, I decided to go with [DooD - Docker out of Docker](https://tdongsi.github.io/blog/2017/04/23/docker-out-of-docker/) approach which has negligible disadvantages.
+Long story short, I decided to go with [DooD - Docker out of Docker](https://tdongsi.github.io/blog/2017/04/23/docker-out-of-docker/).
 
 `DooD` Uses the host's Docker daemon by mounting `/var/run/docker.sock` into the container.
 
-Advantages:
+It means that if the host machine has the docker engine installed on it:
+- it can start container `A` using `/var/run/docker.sock` which listens for commands
+- it can start "sibling" container `B` by executing commands such as `docker run ...` from container `A`, using `/var/run/docker.sock`
+
+In our domain terms:
+- container `A` will be `worker-1` container, which will be starting sibling containers
+- sibling containers will be short-lived, limited (CPU, RAM, timeout) containers which run `python`, `java` and such processes
+
+Advantages of `DooD`:
 - Efficient: Direct use of host resources.
 - Simple: No extra Docker daemons.
 - Fast: No nested virtualization overhead.
@@ -149,6 +161,8 @@ Disadvantages:
 ### 3.3 docker-compose
 
 Since we want to run a `pekko` cluster we could use `docker-compose` and its declarative definitions for cluster components such as `master` and `worker` nodes, with shared volume, image names, ports mappings, environment variables and so on.
+
+This is how `docker-compose.yaml` could look like in the root directory of our project:
 
 ```yaml
 version: '3'
@@ -246,33 +260,35 @@ This `docker-compose.yaml` file sets up a `Pekko` cluster with one `master` and 
 
 Key points include:
 
-1. **Version:** Uses Docker Compose version 3.
-2. **Services:** Defines four services - `master`, `worker-1`, `worker-2`, and `worker-3`.
+1. Version: Uses Docker Compose version 3.
+2. Services: Defines four services - `master`, `worker-1`, `worker-2`, and `worker-3`.
 
-**Master:**
-- **Image:** Uses `braindrill:latest` and builds from the Dockerfile in the current context. `braindrill` image will be built using a special `Dockerfile` definition which will be covered later. For better automation, we could write a deployment shell script that automates all those details. 
-- **Container Name:** `master`
-- **Ports:** Maps `1600:1600` and `8080:8080`.
-- **Volumes:** Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files where user code will be written.
-- **Environment Variables:** Sets cluster details (`CLUSTER_IP`, `CLUSTER_PORT`, `CLUSTER_ROLE`, `SEED_IP`).
+#### Master:
+- Image: Uses `braindrill:latest` and builds from the Dockerfile in the current context. `braindrill` image will be built using a special `Dockerfile` definition which will be covered later. For better automation, we could also write a deployment shell script that automates all those details. 
+- Container Name: `master` - in Pekko terms - master node
+- Ports: Maps `1600:1600` and `8080:8080`
+- Volumes: Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files (e.g `python123.py`, `Program123.java`) where user code will be written.
+- Environment Variables: Sets cluster details (`CLUSTER_IP`, `CLUSTER_PORT`, `CLUSTER_ROLE`, `SEED_IP`).
 
-**Workers:**
-- **Image:** Uses `braindrill:latest` and builds from the Dockerfile in the current context.
-- **Ports:** Each worker maps a unique port (`17350`, `17351`, `17352`).
-- **Security:** Disables default security profiles (`seccomp=unconfined`).
-- **Volumes:** Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files where user code will be written.
-- **Environment Variables:** Sets cluster and seed details for each worker.
+#### Workers:
+- Image: Uses `braindrill:latest` and builds from the Dockerfile in the current context.
+- Ports: Each worker maps a unique port (`17350`, `17351`, `17352`).
+- Security: Disables default security profiles (`seccomp=unconfined`).
+- Volumes: Mounts Docker socket for `DooD` and `engine` volume for sharing temporary files where user code will be written.
+- Environment Variables: Sets cluster and seed details for each worker.
 
-**Common Settings:**
-- **TTY and stdin_open:** Enabled for interactive use.
-- **Working Directory:** `/app`.
+#### Common Settings:
+- TTY and stdin_open: Enabled for interactive use.
+- Working Directory: `/app`.
 
-**Volumes:**
-- **Engine:** An external volume named `engine`.
+#### Volumes:
+- Engine: An external volume named `engine` which is necessary to share temporary program files that will be later executed.
 
 ### 3.4 Dockerfile
 
-Dockerfile is pretty simple and self explanatory:
+`Dockerfile` is a declarative file for building a `docker` image.
+
+Pretty simple and self-explanatory:
 
 ```shell
 # Use an official OpenJDK runtime as a parent image
@@ -281,7 +297,7 @@ FROM hseeberger/scala-sbt:17.0.2_1.6.2_3.1.1
 # Update the repository sources list and install required packages
 RUN apt-get update && \
     apt-get install -y \
-    docker.io
+    docker.io # docker.io needed to run `docker` commands from the container itself
 
 # Set the working directory to /tmp
 WORKDIR /app
@@ -296,7 +312,17 @@ RUN sbt clean assembly
 ENTRYPOINT ["java", "-jar", "target/scala-3.4.1/braindrill.jar"]
 ```
 
-### 3.5 deployment shell script
+### 3.5 Local deployment shell script
+
+Deployment shell script is a handy tool that enables us to run the project locally with a single command.
+
+The goal is to automate the following:
+- creating an image - `braindrill`
+- creating a volume - `engine`
+- pulling programming language runtime images (`java`, `python` and others)
+- redeploying the nodes with the new version of `braindrill` image if required
+
+So, it could look like the following (inspired by ChatGPT):
 
 ```shell
 #!/bin/bash
@@ -353,28 +379,28 @@ echo "Running command: $DOCKER_COMPOSE_CMD"
 $DOCKER_COMPOSE_CMD
 ```
 
-This deployment shell script sets up a Docker environment and optionally rebuilds the Docker images. Key points include:
+This deployment shell script (`deploy.sh`) sets up a Docker environment and optionally rebuilds the Docker images. Key points include:
 
-1. **Help Function:**
+1. Help Function:
    - Provides usage instructions for the script.
 
-2. **Rebuild Argument Check:**
+2. Rebuild Argument Check:
    - If "rebuild" is passed as an argument, the script adds `--build` to the `docker-compose up` command.
    - If an unrecognized argument is passed, it prints the help message and exits.
 
-3. **Docker Volume Management:**
+3. Docker Volume Management:
    - Checks if a Docker volume named `engine` exists.
    - If not, it creates the volume which is necessary for worker containers to access temporary files to be executed later
 
-4. **Docker Image Management:**
+4. Docker Image Management:
    - Defines a list of Docker images to be pulled (`openjdk:17`, `python`, `node`, `ruby`, `perl`, `php`).
    - Checks if each image exists locally and pulls it in the background if it does not.
 
-5. **Parallel Image Pulling:**
+5. Parallel Image Pulling:
    - Uses background jobs to pull Docker images simultaneously for efficiency.
    - Waits for all background jobs to complete.
 
-6. **Run Docker Compose:**
+6. Run Docker Compose:
    - Executes the `docker-compose up` command, with or without the `--build` flag based on the initial argument.
 
 ## 4. Configuration
@@ -435,29 +461,29 @@ clustering {
 
 This file configures various settings for the Pekko application, including actor system properties, HTTP settings, remote communication, and clustering parameters:
 
-**1. Pekko Actor System Configuration**
+#### Pekko Actor System Configuration
 - `provider = cluster`: This setting specifies that the actor system will use clustering capabilities.
 - `serialization-bindings`: This section defines serialization bindings for specific classes. Here, any class implementing `serialization.CborSerializable` will be serialized using the `jackson-cbor` serializer.
 
-**2. HTTP Configuration**
+#### HTTP Configuration
 - `host-connection-pool.max-open-requests`: This setting specifies the maximum number of open requests in the HTTP host connection pool. It is set to 256.
 
-**3. Remote Communication Configuration**
+#### Remote Communication Configuration
 - `remote.artery`: This section configures the Artery transport (a remoting mechanism in Pekko).
 - `canonical.hostname`: This sets the hostname for the actor system, which is derived from `clustering.ip`.
 - `canonical.port`: This sets the port for the actor system, which is derived from `clustering.port`.
 - `large-message-destinations`: Specifies destinations for large messages. In this case, any destination matching the pattern `/temp/load-balancer-*` will be treated as a large message destination.
 
-**4. Cluster Configuration**
+#### Cluster Configuration
 - `seed-nodes`: Defines the initial contact points for the cluster, using placeholders for cluster name, seed IP, and seed port.
 - `roles`: Specifies the roles of the cluster node, derived from clustering.role.
 - `downing-provider-class`: Specifies the class for handling split-brain scenarios. Here, it's set to `SplitBrainResolverProvider`.
  
-**5. Http Server Configuration**
+#### Http Server Configuration
 - `http.port`: Sets the HTTP server port to 8080.
 - `http.host`: Sets the HTTP server host to 0.0.0.0, meaning it will bind to all available network interfaces.
 
-**6. Clustering Variables**
+#### Clustering Variables
 - `ip`: Default IP address for clustering is 127.0.0.1. It can be overridden by the environment variable `CLUSTER_IP`.
 - `port`: Default port for clustering is 1600. It can be overridden by the environment variable `CLUSTER_PORT`.
 - `role`: Role of the cluster node, which can be set using the environment variable `CLUSTER_ROLE`.
@@ -651,19 +677,19 @@ So, `Worker` actor is designed to handle code execution requests for various pro
 - On `StartExecution`, it logs the event, checks for language support, and spawns a `FileHandler` actor to handle file preparation. If the language isn't supported, it responds with `ExecutionFailed`.
 - On `ExecutionSucceeded` and `ExecutionFailed`, it logs the outcome and sends the result back to the requester.
 - `ActorRef Management`: Manages the original requester (`workerRouter` which will be defined later) to send back execution results.
-- The imports `import workers.children.FileHandler.In.PrepareFile` and `import workers.children.FileHandler` will be covered later, focusing on file preparation logic.
+- The imports `import workers.children.FileHandler.In.PrepareFile` and `import workers.children.FileHandler` will be covered next, focusing on file preparation logic.
 
 With this, we can move to `FileHandler`.
 
 ### 5.2 File Handler
 
-`File Handler` will be a local child actor for the `Worker` actor on the same `worker` node.
+`FileHandler` will be a local child actor for the `Worker` actor on the same `worker` node.
 
 We've already seen `PrepareFile` message mentioned in `Worker` actor, but there must also be defined something like `FilePrepared` and `FilePreparationFailed` messages for covering both possible outcomes.
 
-If file will be created, `File Handler` should simply proceed with code execution, otherwise it must report why the process failed.
+If file will be created, `FileHandler` should simply proceed with code execution, otherwise it should report immediately why the process failed.
 
-With those expectations in mind, the code could look like:
+With those expectations in mind, the code could look like the following:
 
 ```scala
 package workers.children
@@ -771,12 +797,12 @@ The main responsibility for `CodeExecutor` is to execute code and return the out
 - code can cause memory issues
 - code can cause cpu issues
 - code can result in an accidental infinite loop
+- code can be accumulating too much output
+- and so on...
 
-and so on...
+To tackle all this, we need to write a special logic and model the aforementioned concepts in a sensible way.
 
-To tackle all this, we need to write a special logic and model the aforementioned concepts in a good way.
-
-After struggling with those issues for a week or so, I managed to define `CodeExecutor` in the following way:
+After struggling with those issues for a week or so, I managed to refine `CodeExecutor` iteratively, ending up with the following:
 
 ```scala
 package workers.children
@@ -911,12 +937,12 @@ Here it's worth going into details since it's the meat of the whole project.
 
 #### Constants and Imports
 
-1. **Constants**:
+1. Constants:
     - `KiloByte`, `MegaByte`, `TwoMegabytes`: Constants for byte size calculations.
     - `AdjustedMaxSizeInBytes`: Adjusted max size for output (approximately 409.6 KB).
     - `MaxOutputSize`: Maximum allowed output size for the code execution.
 
-2. **Imports**:
+2. Imports:
     - Imports various `Pekko` and `Scala` utilities for actor behavior, stream handling, and future operations.
 
 #### Messages (`In`)
@@ -933,39 +959,39 @@ A custom `TooLargeOutput` throwable is defined to handle scenarios where the cod
 The `apply` method defines the actor's behavior using Akka's `Behaviors.receive` method:
 
 #### `In.Execute` case
-1. **Logging**: Logs that code execution has started.
-2. **Running Docker Command**: Constructs and runs a Docker command with a 2-second timeout and memory limits.
+1. Logging: Logs that code execution has started.
+2. Running Docker Command: Constructs and runs a Docker command with a 2-second timeout and memory limits.
     - The Docker command binds the `engine` volume, sets the working directory to `/data`, and runs the provided compiler and file within the specified Docker image.
-3. **Handling Streams**: Handles both the standard and error streams from the Docker process.
-4. **Reading Output**: Reads the success and error streams and joins them with the exit code.
-5. **Deleting File**: Schedules the file for deletion to free up memory.
-6. **Piping Result**: Uses `ctx.pipeToSelf` to handle the asynchronous execution result.
+3. Handling Streams: Handles both the standard and error streams from the Docker process.
+4. Reading Output: Reads the success and error streams and joins them with the exit code.
+5. Deleting File: Schedules the file for deletion to free up memory.
+6. Piping Result: Uses `ctx.pipeToSelf` to handle the asynchronous execution result.
     - On success, checks the exit code and constructs appropriate messages (`ExecutionFailed` for specific exit codes or `ExecutionSucceeded`).
     - On failure, logs the exception and constructs an `ExecutionFailed` message.
 
 #### `In.ExecutionSucceeded` case
-1. **Logging**: Logs successful execution.
-2. **Replying**: Sends an `ExecutionSucceeded` message to the requester.
-3. **Stopping Behavior**: Stops the actor.
+1. Logging: Logs successful execution.
+2. Replying: Sends an `ExecutionSucceeded` message to the requester.
+3. Stopping Behavior: Stops the actor.
 
 #### `In.ExecutionFailed` case
-1. **Logging**: Logs the failure reason.
-2. **Replying**: Sends an `ExecutionFailed` message to the requester.
-3. **Stopping Behavior**: Stops the actor.
+1. Logging: Logs the failure reason.
+2. Replying: Sends an `ExecutionFailed` message to the requester.
+3. Stopping Behavior: Stops the actor.
 
 #### Helper Methods
-1. **readOutput**: Defines a sink that reads ByteString input, converts it to a UTF-8 string, and checks if the output size exceeds the maximum allowed size.
-2. **src**: Creates a source from an input stream.
-3. **run**: Executes a command using `sys.runtime.exec` and returns a future of the process.
+1. readOutput: Defines a sink that reads ByteString input, converts it to a UTF-8 string, and checks if the output size exceeds the maximum allowed size.
+2. src: Creates a source from an input stream.
+3. run: Executes a command using `sys.runtime.exec` and returns a future of the process.
 
 #### Detailed Workflow
-1. **Execution Start**: When the `Execute` message is received, the actor starts by logging the event.
-2. **Docker Command**: It then constructs and runs the Docker command with specified limits.
-3. **Stream Handling**: Both the success and error streams from the Docker process are handled and read concurrently.
-4. **Output Management**: The output is read and checked against the maximum allowed size.
-5. **File Deletion**: The file is scheduled for deletion to free up memory.
-6. **Result Handling**: The result of the execution (success or failure) is handled and appropriate messages are constructed and sent to the requester.
-7. **Actor Lifecycle**: Depending on the message (`ExecutionSucceeded` or `ExecutionFailed`), the actor stops itself after sending the reply.
+1. Execution Start: When the `Execute` message is received, the actor starts by logging the event.
+2. Docker Command: It then constructs and runs the Docker command with specified limits.
+3. Stream Handling: Both the success and error streams from the Docker process are handled and read concurrently.
+4. Output Management: The output is read and checked against the maximum allowed size.
+5. File Deletion: The file is scheduled for deletion to free up memory.
+6. Result Handling: The result of the execution (success or failure) is handled and appropriate messages are constructed and sent to the requester.
+7. Actor Lifecycle: Depending on the message (`ExecutionSucceeded` or `ExecutionFailed`), the actor stops itself after sending the reply.
 
 This code ensures that code execution is managed efficiently within a controlled environment (Docker) and handles different outcomes (success, failure, timeouts, and memory limits) gracefully.
 
@@ -977,37 +1003,37 @@ In a distributed system, efficiently managing and coordinating tasks across mult
 
 #### Components and Their Roles
 
-1. **Cluster and Node Configuration:**
+1. Cluster and Node Configuration:
    - The cluster is initialized using `Cluster(ctx.system)`, and the node's roles and configuration settings are obtained.
 
-2. **Worker Nodes:**
-   - **Worker Router:**
+2. Worker Nodes:
+   - Worker Router:
       - Each `worker` node should initialize a pool of `worker` actors using a `Round Robin` routing strategy. The pool size is configurable via `transformation.workers-per-node`.
       - The worker router is registered with the `Receptionist`, making it discoverable across the cluster.
 
-3. **Master Node:**
-   - **Load Balancers:**
+3. Master Node:
+   - Load Balancers:
       - A pool of load balancers forwards execution tasks to the worker routers. The pool size is configurable via `transformation.load-balancer`.
       - Each load balancer uses group routing to distribute tasks to remote worker routers.
 
-4. **HTTP Server:**
+4. HTTP Server:
    - The `master` node sets up an HTTP server to accept task submissions. It listens on a configurable host and port.
    - Incoming tasks are forwarded to a randomly selected load balancer, which then distributes them to the worker nodes.
 
 #### Justification for the Components
 
-1. **Efficiency and Scalability:**
+1. Efficiency and Scalability:
    - Using a cluster setup with dedicated `worker` and `master` nodes allows for efficient task distribution and parallel processing.
    - The `Round Robin` routing of `worker` actors and load balancers ensures balanced workload distribution.
 
-2. **Dynamic Discovery and Registration:**
+2. Dynamic Discovery and Registration:
    - The `Receptionist` enables dynamic discovery of `worker` routers across the cluster, facilitating seamless scaling and fault tolerance.
 
-3. **Robust and Resilient Execution:**
+3. Robust and Resilient Execution:
    - Supervisory strategies for `worker` actors enhance fault tolerance by restarting actors on failure.
    - The use of `ask` patterns with timeouts ensures that task submissions are handled gracefully, even in the event of errors.
 
-4. **Configurability:**
+4. Configurability:
    - Key parameters like the number of workers, load balancers, and server settings are configurable, allowing for flexibility and adaptability to different environments and workloads.
 
 By leveraging these components and strategies, the cluster system can efficiently manage and distribute tasks across multiple nodes, providing a robust solution for distributed computing scenarios.
@@ -1107,21 +1133,294 @@ object ClusterSystem:
 
 The code above sets up an `Pekko` cluster with `worker` and `master` nodes.
 
-1. **Receptionist:** Registers the `worker` routers so they can be discovered cluster-wide.
-2. **HTTP Server:** On the `master` node, it starts an `HTTP` server to accept code execution requests.
-3. **Configuration:** Reads settings for the number of `workers`, `load balancers`, and `HTTP` server details.
-4. **Worker Router:** Each `worker` node creates a pool of ``worker actors using `round-robin` routing.
-5. **Load-Balancer:** The `master` node creates `load balancers` to forward tasks to `worker` routers.
+1. Receptionist: Registers the `worker` routers so they can be discovered cluster-wide.
+2. HTTP Server: On the `master` node, it starts an `HTTP` server to accept code execution requests.
+3. Configuration: Reads settings for the number of `workers`, `load balancers`, and `HTTP` server details.
+4. Worker Router: Each `worker` node creates a pool of ``worker actors using `round-robin` routing.
+5. Load-Balancer: The `master` node creates `load balancers` to forward tasks to `worker` routers.
 
-**Algorithm for Code Execution:**
+Algorithm for Code Execution:
 - `HTTP POST` request with code is received.
 - A random `load balancer` forwards the request to a `worker` router.
 - The `worker` router assigns the task to a worker actor, which executes the code and returns the result.
 
 With that we finish the part which is concerned with code.
 
-Let's move on to shell scripts and all that good stuff.
+Let's move on to the final part of the project - running it all locally.
 
+## 7. Local Deployment
 
+To deploy the project locally we should simply run `./deploy.sh` and wait to see the logs from the `worker` and `master` nodes.
 
+For the details, please view the [README](https://github.com/Ghurtchu/braindrill/blob/main/README.md) of the original project.
 
+The only requirement is to have the docker engine installed locally.
+
+## 8. Simulator
+
+To get the better feeling of how the app performs under a certain load I decided to write the `Simulator.scala` which simulates the behaviour of the concurrent users.
+
+`Simulator.scala` must be run as a separate process, assuming that the execution engine is already started and is ready to accept requests.
+
+To some extent, testing the load on the locally deployed cluster may not be the best idea since all the nodes are using the shared resources of the single laptop, but I had to give it a try.
+
+The goal of the simulator is to perform aggregate the statistics of things such as:
+- total requests in a minute
+- average response time
+- error count
+- response time percentiles: p50, p90, p99
+
+With those expectations in mind, `Simulator.scala` could look like the following:
+
+```scala
+package simulator
+
+import com.typesafe.config.ConfigFactory
+import org.apache.pekko.actor.{ActorSystem, Cancellable}
+import org.apache.pekko.http.scaladsl.Http
+import org.apache.pekko.http.scaladsl.model.*
+import org.apache.pekko.stream.scaladsl.{Flow, Keep, Sink, Source}
+import org.apache.pekko.util.ByteString
+import org.apache.pekko.{Done, NotUsed}
+
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.{AtomicInteger, AtomicLong}
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.duration.*
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.util.Random.shuffle
+
+object Simulator extends App:
+
+  val actorSystem = "SimulatorSystem"
+  given system: ActorSystem = ActorSystem(actorSystem, ConfigFactory.load("simulator.conf"))
+  given ec: ExecutionContextExecutor = system.classicSystem.dispatcher
+
+  val http = Http(system)
+
+  val requestCount = AtomicInteger(0)
+  val responseTimes = AtomicLong(0)
+  val responseTimeDetails = mutable.ArrayBuffer.empty[Long]
+  val errors = AtomicInteger(0)
+
+  def stream(name: String, interval: FiniteDuration) = {
+
+    // generate random code per 125 milliseconds
+    val generateRandomCode: Source[Code, Cancellable] = Source
+      .tick(0.seconds, interval, NotUsed)
+      .map(_ => Code.random)
+
+    // send http request to remote code execution engine
+    val sendHttpRequest: Flow[Code, (Instant, Instant, String, Code), NotUsed] = Flow[Code]
+      .mapAsync(100) { code =>
+        val request = HttpRequest(
+          method = HttpMethods.POST,
+          uri = "http://localhost:8080/lang/python",
+          entity = HttpEntity(ContentTypes.`application/json`, ByteString(code.value))
+        )
+
+        val (now, requestId) = (Instant.now(), randomId())
+        println(s"[$name]: sending Request($requestId, $code) at $now")
+
+        http
+          .singleRequest(request)
+          .map { response =>
+            val end = Instant.now()
+            val duration = ChronoUnit.MILLIS.between(now, end)
+            response.discardEntityBytes()
+
+            requestCount.incrementAndGet()
+            responseTimes.addAndGet(duration)
+            responseTimeDetails += duration
+
+            (now, end, requestId, code)
+          }
+          .recover:
+            case ex =>
+              println(s"[$name] failed: ${ex.getMessage}")
+              errors.incrementAndGet()
+              (now, Instant.now(), requestId, code)
+      }
+
+    // display the http response time
+    val displayResponseTime: Sink[(Instant, Instant, String, Code), Future[Done]] =
+      Sink.foreach: (start, end, requestId, code) =>
+        val duration = ChronoUnit.MILLIS.between(start, end)
+        println(
+          s"[$name]: received response for Request($requestId, $code) in $duration millis at: $end"
+        )
+
+    // join the stream
+    generateRandomCode
+      .via(sendHttpRequest)
+      .toMat(displayResponseTime)(Keep.right)
+  }
+
+  // run the stream
+  stream("simulator", 160.millis)
+    .run()
+
+  system.scheduler.scheduleWithFixedDelay(60.seconds, 60.seconds): () =>
+    val count = requestCount.getAndSet(0)
+    val totalResponseTime = responseTimes.getAndSet(0)
+    val averageResponseTime = if (count > 0) totalResponseTime / count else 0
+    val errorCount = errors.getAndSet(0)
+    val p50 = percentile(responseTimeDetails, 50)
+    val p90 = percentile(responseTimeDetails, 90)
+    val p99 = percentile(responseTimeDetails, 99)
+
+    println("-" * 50)
+    println(s"Requests in last minute: $count")
+    println(s"Average response time: $averageResponseTime ms")
+    println(s"Error count: $errorCount")
+    println(s"Response time percentiles: p50=$p50 ms, p90=$p90 ms, p99=$p99 ms")
+    println("-" * 50)
+
+    responseTimeDetails.clear()
+
+  private def randomId(): String =
+    java.util.UUID
+      .randomUUID()
+      .toString
+      .replace("-", "")
+      .substring(1, 10)
+
+  private def percentile(data: ArrayBuffer[Long], p: Double): Long =
+    if data.isEmpty then 0
+    else
+      val sortedData = data.sorted
+      val k = (sortedData.length * (p / 100.0)).ceil.toInt - 1
+
+      sortedData(k)
+
+  enum Code(val value: String):
+    case MemoryIntensive extends Code(Python.MemoryIntensive)
+    case CPUIntensive extends Code(Python.CPUIntensive)
+    case Random extends Code(Python.Random)
+    case Simple extends Code(Python.Simple)
+    case Instant extends Code(Python.Instant)
+
+  object Code:
+    def random: Code = shuffle(Code.values).head
+
+  object Python:
+    val MemoryIntensive =
+      """
+        |def memory_intensive_task(size_mb):
+        |    # Create a list of integers to consume memory
+        |    data = [0] * (size_mb * 1024 * 1024)  # Each element takes 8 bytes on a 64-bit system
+        |    return data
+        |print(memory_intensive_task(2))  # Allocate 10 MB of memory
+        |""".stripMargin
+
+    val CPUIntensive =
+      """
+        |def cpu_intensive_task(n):
+        |    result = 0
+        |    for i in range(n):
+        |        result += i * i
+        |    return result
+        |print(cpu_intensive_task(50))
+        |""".stripMargin
+
+    val Random =
+      """import random
+        |
+        |# Initialize the stop variable to False
+        |stop = False
+        |
+        |while not stop:
+        |    # Generate a random number between 1 and 100
+        |    random_number = random.randint(1, 1000)
+        |    print(f"Generated number: {random_number}")
+        |
+        |    # Check if the generated number is greater than 80
+        |    if random_number == 1000:
+        |        stop = True
+        |
+        |print("Found a number greater than 80. Exiting loop.")
+        |""".stripMargin
+
+    val Simple =
+      """
+        |for i in range(1, 500):
+        |    print("number: " + str(i))
+        |""".stripMargin
+
+    val Instant = "print('hello world')"
+```
+
+Here are the important points:
+
+1. Imports: The code uses Apache Pekko for actor-based concurrency, HTTP client, and stream processing. It also imports utilities for handling concurrency and mutable collections.
+
+2. Actor System Setup:
+   - The actor system (`SimulatorSystem`) and execution context are initialized with a configuration file (`simulator.conf`).
+
+3. Metrics:
+   - Atomic variables are used to track request counts, response times, response details, and errors.
+
+4. Stream Definition:
+   - A stream is defined to generate random codes and send HTTP POST requests to a remote server at regular intervals.
+   - **`generateRandomCode`**: Generates a random code every specified interval (e.g., 160 milliseconds).
+   - **`sendHttpRequest`**: Sends the generated code as an HTTP POST request and records the response time.
+   - **`displayResponseTime`**: Displays the response time for each request.
+
+5. Stream Execution:
+   - The stream is run with the name "simulator" and an interval of 160 milliseconds.
+
+6. Metrics Logging:
+   - Every 60 seconds, the code logs metrics such as the number of requests, average response time, error count, and response time percentiles (p50, p90, p99).
+
+7. Utility Methods:
+   - **`randomId`**: Generates a random request ID.
+   - **`percentile`**: Calculates response time percentiles from recorded data.
+
+8. Enum and Object Definitions:
+   - **`Code` Enum**: Defines various types of codes (e.g., `MemoryIntensive`, `CPUIntensive`).
+   - **`Python` Object**: Contains Python code snippets for different tasks.
+
+This setup continuously sends HTTP requests, tracks metrics, and periodically logs performance data.
+
+Please, run it and share the performance details with me, feel free to play with numbers as well :)
+
+## 9. Conclusion
+
+In this blog post, we've explored the journey of building a robust, scalable, and efficient remote code execution engine using Scala 3 and Apache Pekko. Our system leverages a master-worker architecture, with one master node and three worker nodes to distribute and manage code execution tasks across a cluster. Let's recap the key components and features of our solution.
+
+#### Key Components and Features
+
+1. Cluster Awareness with Receptionist and Router:
+   - By using `Receptionist` and `Router`, we ensured our system is cluster-aware, allowing dynamic scaling and efficient task distribution among worker nodes.
+
+2. Actors for Task Management:
+   - `Worker`: Coordinates tasks on the worker nodes, ensuring seamless processing and communication with the master node.
+   - `FileHandler`: Manages file preparation required for code execution.
+   - `CodeExecutor`: Executes the code snippets in a sibling docker container and collects the output.
+
+3. Docker-out-of-Docker (DooD) Approach:
+   - Each worker node runs as a Docker container, and within these containers, we utilize the DooD approach to execute sibling containers. This method provides isolation and security, ensuring each code execution happens in a controlled and disposable environment.
+
+4. Resource Management and Security:
+   - We've set stringent resource limits (CPU, RAM) and a 2-second timeout for code execution. These measures protect the system from malicious code, such as infinite loops, ensuring stability and security.
+
+5. Support for Multiple Languages:
+   - Our engine supports six programming languages, demonstrating its versatility and adaptability to various use cases.
+
+#### Scalability and Efficiency
+
+The design choices made in this project ensure that our remote code execution engine can scale efficiently with the demands. By distributing the workload across multiple worker nodes and dynamically managing these nodes using cluster-aware techniques, we can handle a large number of concurrent code execution requests without compromising performance.
+
+#### Final Thoughts
+
+Building this distributed system with Scala 3 and Apache Pekko has been an enlightening experience. We've harnessed the power of actor-based concurrency, cluster management, and containerization to create a resilient and secure remote code execution engine. This project exemplifies how modern technologies can be integrated to solve complex problems in a scalable and efficient manner.
+
+Whether you're looking to implement a similar system or seeking insights into distributed computing with Scala and Pekko, we hope this blog post has provided valuable knowledge and inspiration. Thank you for following along!
+
+Please, check out:
+- [Video demo](https://www.youtube.com/watch?v=sMlJC7Kr330) which includes running the `Simulator.scala`
+- [project on GitHub](https://github.com/ghurtchu/braindrill/) and provide feedback or improvement ideas.
+
+Thank you for following along!
