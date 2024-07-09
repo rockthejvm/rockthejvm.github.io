@@ -43,7 +43,9 @@ Put simply, the goal of this project is to get familiar with `Pekko` and its mod
 
 Let's get started then, shall we?
 
-## 2. Project Structure
+## 2. Project Structure - here
+
+I recommend checking out [the project on GitHub](https://github.com/ghurtchu/braindrill/) and following along that way. 
 
 We will use `Scala 3.4.1`, `sbt 1.9.9`, `docker`, `pekko` and its modules to complete our project.
 
@@ -99,6 +101,17 @@ As shown:
 - we mainly use `pekko` libraries for main work and `logback-classic` for logging
 - `root` definition which defines the `name`, `assemblyJarName` and `mainClass`
 - all of which is used by `sbt assembly` to turn our code into `braindrill.jar`
+
+Also, we configure the `assemblyMergeStrategy` for `sbt-assembly` to handle file conflicts when creating a JAR. It defines how to merge files from different JARs:
+
+Discard Specific Files:
+- `META-INF/versions/9/module-info.class`
+- `module-info.class`
+
+Default Strategy:
+- For all other files, use the default merge strategy.
+
+The main idea here is to avoid conflicts with Java 9 module system files and ensure smooth merging of other files.
 
 and a one line definition in `project/plugins.sbt`:
 ```scala
@@ -157,6 +170,7 @@ Advantages of `DooD`:
 Disadvantages:
 - Security risk: Access to host Docker daemon.
 - Less isolation: Shared daemon.
+- Overhead: Starting/Stopping containers all the time 
 
 ### 3.3 docker-compose
 
@@ -288,8 +302,6 @@ Key points include:
 
 `Dockerfile` is a declarative file for building a `docker` image.
 
-Pretty simple and self-explanatory:
-
 ```shell
 # Use an official OpenJDK runtime as a parent image
 FROM hseeberger/scala-sbt:17.0.2_1.6.2_3.1.1
@@ -322,7 +334,7 @@ The goal is to automate the following:
 - pulling programming language runtime images (`java`, `python` and others)
 - redeploying the nodes with the new version of `braindrill` image if required
 
-So, it could look like the following (inspired by ChatGPT):
+So, it could look like the following:
 
 ```shell
 #!/bin/bash
@@ -559,113 +571,117 @@ import org.apache.pekko.actor.typed.scaladsl.Behaviors
 import serialization.CborSerializable
 import workers.children.FileHandler
 
-import scala.util.*
+import scala.util._
 
-object Worker:
+object Worker {
 
-  // this enables Worker to be discovered by actors living on other nodes
-  val WorkerRouterKey = ServiceKey[Worker.StartExecution]("worker-router.StartExecution")
+   // this enables Worker to be discovered by actors living on other nodes
+   val WorkerRouterKey = ServiceKey[Worker.StartExecution]("worker-router.StartExecution")
 
-  // simple model for grouping compiler, file extension and docker image for the programming language
-  private final case class LanguageSpecifics(
-      compiler: String,
-      extension: String,
-      dockerImage: String
-  )
+   // simple model for grouping compiler, file extension and docker image for the programming language
+   private final case class LanguageSpecifics(
+       compiler: String,
+       extension: String,
+       dockerImage: String
+   )
 
-  // language specifics per language
-  private val languageSpecifics: Map[String, LanguageSpecifics] =
-    Map(
+   // language specifics per language
+   private val languageSpecifics: Map[String, LanguageSpecifics] = Map(
       "java" -> LanguageSpecifics(
-        compiler = "java",
-        extension = ".java",
-        dockerImage = "openjdk:17"
+         compiler = "java",
+         extension = ".java",
+         dockerImage = "openjdk:17"
       ),
       "python" -> LanguageSpecifics(
-        compiler = "python3",
-        extension = ".py",
-        dockerImage = "python"
+         compiler = "python3",
+         extension = ".py",
+         dockerImage = "python"
       ),
       "ruby" -> LanguageSpecifics(
-        compiler = "ruby",
-        extension = ".ruby",
-        dockerImage = "ruby"
+         compiler = "ruby",
+         extension = ".ruby",
+         dockerImage = "ruby"
       ),
       "perl" -> LanguageSpecifics(
-        compiler = "perl",
-        extension = ".pl",
-        dockerImage = "perl"
+         compiler = "perl",
+         extension = ".pl",
+         dockerImage = "perl"
       ),
       "javascript" -> LanguageSpecifics(
-        compiler = "node",
-        extension = ".js",
-        dockerImage = "node"
+         compiler = "node",
+         extension = ".js",
+         dockerImage = "node"
       ),
       "php" -> LanguageSpecifics(
-        compiler = "php",
-        extension = ".php",
-        dockerImage = "php"
+         compiler = "php",
+         extension = ".php",
+         dockerImage = "php"
       )
-    )
-  
-  // a parent type for modeling incoming messages
-  sealed trait In
+   )
 
-  final case class StartExecution(
-      code: String,
-      language: String,
-      replyTo: ActorRef[Worker.ExecutionResult]
-  ) extends In
-      with CborSerializable
+   // a parent type for modeling incoming messages
+   sealed trait In
 
-  // a parent type that models successful and failed executions
-  sealed trait ExecutionResult extends In:
-    def value: String
+   final case class StartExecution(
+       code: String,
+       language: String,
+       replyTo: ActorRef[Worker.ExecutionResult]
+   ) extends In with CborSerializable
 
-  final case class ExecutionSucceeded(value: String) extends ExecutionResult with CborSerializable
-  final case class ExecutionFailed(value: String) extends ExecutionResult with CborSerializable
+   // a parent type that models successful and failed executions
+   sealed trait ExecutionResult extends In {
+      def value: String
+   }
 
-  // constructor for creating Behavior[In]
-  def apply(workerRouter: Option[ActorRef[Worker.ExecutionResult]] = None): Behavior[In] =
-    Behaviors.setup[In]: ctx =>
-      val self = ctx.self
+   final case class ExecutionSucceeded(value: String) extends ExecutionResult with CborSerializable
+   final case class ExecutionFailed(value: String)    extends ExecutionResult with CborSerializable
 
-      Behaviors.receiveMessage[In]:
-        case msg @ StartExecution(code, lang, replyTo) =>
-          ctx.log.info(s"{} processing StartExecution", self)
-          languageSpecifics get lang match
-            case Some(specifics) =>
-              val fileHandler = ctx.spawn(FileHandler(), s"file-handler")
-              ctx.log.info(s"{} sending PrepareFile to {}", self, fileHandler)
+   // constructor for creating Behavior[In]
+   def apply(workerRouter: Option[ActorRef[Worker.ExecutionResult]] = None): Behavior[In] = {
+      Behaviors.setup[In] { ctx =>
+         val self = ctx.self
 
-              fileHandler ! FileHandler.In.PrepareFile(
-                name =
-                  s"$lang${Random.nextInt}${specifics.extension}", // random number for avoiding file overwrite/shadowing
-                compiler = specifics.compiler,
-                dockerImage = specifics.dockerImage,
-                code = code,
-                replyTo = ctx.self
-              )
-            case None =>
-              val reason = s"unsupported language: $lang"
-              ctx.log.warn(s"{} failed execution due to: {}", self, reason)
+         Behaviors.receiveMessage[In] {
+            case msg @ StartExecution(code, lang, replyTo) =>
+               ctx.log.info(s"{} processing StartExecution", self)
+               languageSpecifics get lang match {
+                  case Some(specifics) =>
+                     val fileHandler = ctx.spawn(FileHandler(), s"file-handler")
+                     ctx.log.info(s"{} sending PrepareFile to {}", self, fileHandler)
 
-              replyTo ! Worker.ExecutionFailed(reason)
+                     fileHandler ! FileHandler.In.PrepareFile(
+                        name =
+                           s"$lang${Random.nextInt}${specifics.extension}", // random number for avoiding file overwrite/shadowing
+                        compiler = specifics.compiler,
+                        dockerImage = specifics.dockerImage,
+                        code = code,
+                        replyTo = ctx.self
+                     )
+                  case None =>
+                     val reason = s"unsupported language: $lang"
+                     ctx.log.warn(s"{} failed execution due to: {}", self, reason)
 
-          // register original requester
-          apply(workerRouter = Some(replyTo))
+                     replyTo ! Worker.ExecutionFailed(reason)
+               }
 
-        case msg @ ExecutionSucceeded(result) =>
-          ctx.log.info(s"{} sending ExecutionSucceeded to {}", self, workerRouter)
-          workerRouter.foreach(_ ! msg)
+               // register original requester
+               apply(workerRouter = Some(replyTo))
 
-          apply(workerRouter = None)
+            case msg @ ExecutionSucceeded(result) =>
+               ctx.log.info(s"{} sending ExecutionSucceeded to {}", self, workerRouter)
+               workerRouter.foreach(_ ! msg)
 
-        case msg @ ExecutionFailed(reason) =>
-          ctx.log.info(s"{} sending ExecutionFailed to {}", self, workerRouter)
-          workerRouter.foreach(_ ! msg)
+               apply(workerRouter = None)
 
-          apply(workerRouter = None)
+            case msg @ ExecutionFailed(reason) =>
+               ctx.log.info(s"{} sending ExecutionFailed to {}", self, workerRouter)
+               workerRouter.foreach(_ ! msg)
+
+               apply(workerRouter = None)
+         }
+      }
+   }
+}
 ```
 
 So, `Worker` actor is designed to handle code execution requests for various programming languages. Here's a concise breakdown:
@@ -704,77 +720,85 @@ import workers.Worker
 import java.io.File
 import java.nio.file.Path
 import scala.concurrent.Future
-import scala.util.*
+import scala.util._
 
-object FileHandler:
+object FileHandler {
 
-  enum In:
-    case PrepareFile(
-        name: String,
-        code: String,
-        compiler: String,
-        dockerImage: String,
-        replyTo: ActorRef[Worker.In]
-    )
-    case FilePrepared(
-        compiler: String,
-        file: File,
-        dockerImage: String,
-        replyTo: ActorRef[Worker.In]
-    )
-    case FilePreparationFailed(why: String, replyTo: ActorRef[Worker.In])
+   sealed trait In
+   object In {
+      case class PrepareFile(
+          name: String,
+          code: String,
+          compiler: String,
+          dockerImage: String,
+          replyTo: ActorRef[Worker.In]
+      ) extends In
 
-  def apply() = Behaviors
-    .receive[In]: (ctx, msg) =>
-      import CodeExecutor.In.*
-      import ctx.executionContext
-      import ctx.system
+      case class FilePrepared(
+          compiler: String,
+          file: File,
+          dockerImage: String,
+          replyTo: ActorRef[Worker.In]
+      ) extends In
 
-      val self = ctx.self
+      case class FilePreparationFailed(why: String, replyTo: ActorRef[Worker.In]) extends In
+   }
 
-      ctx.log.info(s"{}: processing {}", self, msg)
+   def apply() = Behaviors
+     .receive[In] { (ctx, msg) =>
+       import CodeExecutor.In._
+       import ctx.executionContext
+       import ctx.system
 
-      msg match
-        case In.PrepareFile(name, code, compiler, dockerImage, replyTo) =>
-          val filepath = s"/data/$name"
-          val asyncFile = for
-            file <- Future(File(filepath))
-            _ <- Source
-              .single(code)
-              .map(ByteString.apply)
-              .runWith(FileIO.toPath(Path.of(filepath)))
-          yield file
+       val self = ctx.self
 
-          ctx.pipeToSelf(asyncFile):
-            case Success(file) => In.FilePrepared(compiler, file, dockerImage, replyTo)
-            case Failure(why)  => In.FilePreparationFailed(why.getMessage, replyTo)
+       ctx.log.info(s"{}: processing {}", self, msg)
 
-          Behaviors.same
+       msg match {
+          case In.PrepareFile(name, code, compiler, dockerImage, replyTo) =>
+             val filepath = s"/data/$name"
+             val asyncFile = for {
+                file <- Future(File(filepath))
+                _ <- Source
+                        .single(code)
+                        .map(ByteString.apply)
+                        .runWith(FileIO.toPath(Path.of(filepath)))
+             } yield file
 
-        case In.FilePrepared(compiler, file, dockerImage, replyTo) =>
-          val codeExecutor = ctx.spawn(CodeExecutor(), "code-executor")
-          // observe child for self-destruction
-          ctx.watch(codeExecutor)
-          ctx.log.info("{} prepared file, sending Execute to {}", self, codeExecutor)
-          codeExecutor ! Execute(compiler, file, dockerImage, replyTo)
+             ctx.pipeToSelf(asyncFile) {
+                case Success(file) => In.FilePrepared(compiler, file, dockerImage, replyTo)
+                case Failure(why)  => In.FilePreparationFailed(why.getMessage, replyTo)
+             }
 
-          Behaviors.same
+             Behaviors.same
 
-        case In.FilePreparationFailed(why, replyTo) =>
-          ctx.log.warn(
-            "{} failed during file preparation due to {}, sending ExecutionFailed to {}",
-            self,
-            why,
-            replyTo
-          )
-          replyTo ! Worker.ExecutionFailed(why)
+          case In.FilePrepared(compiler, file, dockerImage, replyTo) =>
+             val codeExecutor = ctx.spawn(CodeExecutor(), "code-executor")
+             // observe child for self-destruction
+             ctx.watch(codeExecutor)
+             ctx.log.info("{} prepared file, sending Execute to {}", self, codeExecutor)
+             codeExecutor ! Execute(compiler, file, dockerImage, replyTo)
 
-          Behaviors.stopped
-    .receiveSignal:
-      case (ctx, Terminated(ref)) =>
-        ctx.log.info(s"{} is stopping because child actor: {} was stopped", ctx.self, ref)
+             Behaviors.same
 
-        Behaviors.stopped
+          case In.FilePreparationFailed(why, replyTo) =>
+             ctx.log.warn(
+                "{} failed during file preparation due to {}, sending ExecutionFailed to {}",
+                self,
+                why,
+                replyTo
+             )
+             replyTo ! Worker.ExecutionFailed(why)
+
+             Behaviors.stopped
+       }
+    }
+    .receiveSignal { case (ctx, Terminated(ref)) =>
+       ctx.log.info(s"{} is stopping because child actor: {} was stopped", ctx.self, ref)
+
+       Behaviors.stopped
+    }
+  }
 ```
 
 The details:
@@ -819,118 +843,125 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.*
 import scala.util.control.NoStackTrace
 
-object CodeExecutor:
+object CodeExecutor {
 
-  private val KiloByte = 1024 // 1024 bytes
-  private val MegaByte = KiloByte * KiloByte // 1,048,576 bytes
-  private val TwoMegabytes = 2 * MegaByte // 2,097,152 bytes
+   private val KiloByte = 1024 // 1024 bytes
+   private val MegaByte = KiloByte * KiloByte // 1,048,576 bytes
+   private val TwoMegabytes = 2 * MegaByte // 2,097,152 bytes
 
-  private val AdjustedMaxSizeInBytes =
-    (TwoMegabytes * 20) / 100 // 419,430 bytes, which is approx 409,6 KB or 0.4 MB
+   private val AdjustedMaxSizeInBytes =
+      (TwoMegabytes * 20) / 100 // 419,430 bytes, which is approx 409,6 KB or 0.4 MB
 
-  // max size of output when the code is run, if it exceeds the limit then we let the user know to reduce logs or printing
-  private val MaxOutputSize = AdjustedMaxSizeInBytes
+   // max size of output when the code is run, if it exceeds the limit then we let the user know to reduce logs or printing
+   private val MaxOutputSize = AdjustedMaxSizeInBytes
 
-  enum In:
-    case Execute(compiler: String, file: File, dockerImage: String, replyTo: ActorRef[Worker.In])
-    case Executed(output: String, exitCode: Int, replyTo: ActorRef[Worker.In])
-    case ExecutionFailed(why: String, replyTo: ActorRef[Worker.In])
-    case ExecutionSucceeded(output: String, replyTo: ActorRef[Worker.In])
+   enum In {
+      case Execute(compiler: String, file: File, dockerImage: String, replyTo: ActorRef[Worker.In])
+      case Executed(output: String, exitCode: Int, replyTo: ActorRef[Worker.In])
+      case ExecutionFailed(why: String, replyTo: ActorRef[Worker.In])
+      case ExecutionSucceeded(output: String, replyTo: ActorRef[Worker.In])
+   }
 
-  private case object TooLargeOutput extends Throwable with NoStackTrace {
-    override def getMessage: String =
-      "the code is generating too large output, try reducing logs or printing"
-  }
+   private case object TooLargeOutput extends Throwable with NoStackTrace {
+      override def getMessage: String =
+         "the code is generating too large output, try reducing logs or printing"
+   }
 
-  def apply() = Behaviors.receive[In]: (ctx, msg) =>
-    import Worker.*
-    import ctx.executionContext
-    import ctx.system
+   def apply() = Behaviors.receive[In] { (ctx, msg) =>
+      import Worker.*
+      import ctx.executionContext
+      import ctx.system
 
-    val self = ctx.self
+      val self = ctx.self
 
-    msg match
-      case In.Execute(compiler, file, dockerImage, replyTo) =>
-        ctx.log.info(s"{}: executing submitted code", self)
-        val asyncExecuted: Future[In.Executed] = for
-          // timeout --signal=SIGKILL 2 docker run --rm --ulimit cpu=1 --memory=20m -v engine:/data -w /data rust rust /data/r.rust
-          ps <- run(
-            "timeout",
-            "--signal=SIGKILL",
-            "2", // 2 second timeout which sends SIGKILL if exceeded
-            "docker",
-            "run",
-            "--rm", // remove the container when it's done
-            "--ulimit", // set limits
-            "cpu=1", // 1 processor
-            "--memory=20m", // 20 M of memory
-            "-v", // bind volume
-            "engine:/data",
-            "-w", // set working directory to /data
-            "/data",
-            dockerImage,
-            compiler,
-            s"${file.getPath}"
-          )
-          // error and success channels as streams
-          (successSource, errorSource) = src(ps.getInputStream) -> src(ps.getErrorStream)
-          ((success, error), exitCode) <- successSource
-            .runWith(readOutput) // join success, error and exitCode
-            .zip(errorSource.runWith(readOutput))
-            .zip(Future(ps.waitFor))
-          _ = Future(file.delete) // remove file in the background to free up the memory
-        yield In.Executed(
-          output = if success.nonEmpty then success else error,
-          exitCode = exitCode,
-          replyTo = replyTo
-        )
+      msg match {
+         case In.Execute(compiler, file, dockerImage, replyTo) =>
+            ctx.log.info(s"{}: executing submitted code", self)
+            val asyncExecuted: Future[In.Executed] = for
+            // timeout --signal=SIGKILL 2 docker run --rm --ulimit cpu=1 --memory=20m -v engine:/data -w /data rust rust /data/r.rust
+               ps <- run(
+                 "timeout",
+                 "--signal=SIGKILL",
+                 "2", // 2 second timeout which sends SIGKILL if exceeded
+                 "docker",
+                 "run",
+                 "--rm", // remove the container when it's done
+                 "--ulimit", // set limits
+                 "cpu=1", // 1 processor
+                 "--memory=20m", // 20 M of memory
+                 "-v", // bind volume
+                 "engine:/data",
+                 "-w", // set working directory to /data
+                 "/data",
+                 dockerImage,
+                 compiler,
+                 s"${file.getPath}"
+               )
+              // error and success channels as streams
+              (successSource, errorSource) = src(ps.getInputStream) -> src(ps.getErrorStream)
+              ((success, error), exitCode) <- successSource
+                .runWith(readOutput) // join success, error and exitCode
+                .zip(errorSource.runWith(readOutput))
+                .zip(Future(ps.waitFor))
+              _ = Future(file.delete) // remove file in the background to free up the memory
+            yield In.Executed(
+              output = if success.nonEmpty then success else error,
+              exitCode = exitCode,
+              replyTo = replyTo
+            )
 
-        ctx.pipeToSelf(asyncExecuted):
-          case Success(executed) =>
-            ctx.log.info("{}: executed submitted code", self)
-            executed.exitCode match
-              case 124 | 137 =>
-                In.ExecutionFailed(
-                  "The process was aborted because it exceeded the timeout",
-                  replyTo
-                )
-              case 139 =>
-                In.ExecutionFailed(
-                  "The process was aborted because it exceeded the memory usage",
-                  replyTo
-                )
-              case _ => In.ExecutionSucceeded(executed.output, replyTo)
-          case Failure(exception) =>
-            ctx.log.warn("{}: execution failed due to {}", self, exception.getMessage)
-            In.ExecutionFailed(exception.getMessage, replyTo)
+            ctx.pipeToSelf(asyncExecuted) {
+              case Success(executed) =>
+                ctx.log.info("{}: executed submitted code", self)
+                executed.exitCode match
+                    case 124 | 137 =>
+                      In.ExecutionFailed(
+                        "The process was aborted because it exceeded the timeout",
+                        replyTo
+                      )
+                     case 139 =>
+                       In.ExecutionFailed(
+                        "The process was aborted because it exceeded the memory usage",
+                        replyTo
+                      )
+                     case _ => In.ExecutionSucceeded(executed.output, replyTo)
+              case Failure(exception) =>
+                ctx.log.warn("{}: execution failed due to {}", self, exception.getMessage)
+                In.ExecutionFailed(exception.getMessage, replyTo)
+            }
 
-        Behaviors.same
+            Behaviors.same
 
-      case In.ExecutionSucceeded(output, replyTo) =>
-        ctx.log.info(s"{}: executed submitted code successfully", self)
-        replyTo ! Worker.ExecutionSucceeded(output)
+         case In.ExecutionSucceeded(output, replyTo) =>
+            ctx.log.info(s"{}: executed submitted code successfully", self)
+            replyTo ! Worker.ExecutionSucceeded(output)
 
-        Behaviors.stopped
+            Behaviors.stopped
 
-      case In.ExecutionFailed(why, replyTo) =>
-        ctx.log.warn(s"{}: execution failed due to {}", self, why)
-        replyTo ! Worker.ExecutionFailed(why)
+         case In.ExecutionFailed(why, replyTo) =>
+            ctx.log.warn(s"{}: execution failed due to {}", self, why)
+            replyTo ! Worker.ExecutionFailed(why)
 
-        Behaviors.stopped
+            Behaviors.stopped
+      }
+   }
 
-  private def readOutput(using ec: ExecutionContext): Sink[ByteString, Future[String]] =
-    Sink
-      .fold[String, ByteString]("")(_ + _.utf8String)
-      .mapMaterializedValue:
-        _.flatMap: str =>
-          if str.length > MaxOutputSize then Future failed TooLargeOutput
-          else Future successful str
+   private def readOutput(using ec: ExecutionContext): Sink[ByteString, Future[String]] =
+      Sink
+        .fold[String, ByteString]("")(_ + _.utf8String)
+        .mapMaterializedValue {
+           _.flatMap { str =>
+              if str.length > MaxOutputSize then Future failed TooLargeOutput
+              else Future successful str
+           }
+        }
 
-  private def src(stream: => InputStream): Source[ByteString, Future[IOResult]] =
-    StreamConverters.fromInputStream(() => stream)
+   private def src(stream: => InputStream): Source[ByteString, Future[IOResult]] =
+      StreamConverters.fromInputStream(() => stream)
 
-  private def run(commands: String*)(using ec: ExecutionContext) =
-    Future(sys.runtime.exec(commands.toArray))
+   private def run(commands: String*)(using ec: ExecutionContext) =
+   Future(sys.runtime.exec(commands.toArray))
+}
 ```
 
 Here it's worth going into details since it's the meat of the whole project.
@@ -1062,62 +1093,67 @@ import scala.concurrent.ExecutionContextExecutor
 import scala.concurrent.duration.*
 import scala.util.*
 
-object ClusterSystem:
+object ClusterSystem {
 
-  def apply(): Behavior[Nothing] = Behaviors.setup[Nothing]: ctx =>
+   def apply(): Behavior[Nothing] = Behaviors.setup[Nothing] { ctx =>
 
-    import ctx.executionContext
+      import ctx.executionContext
 
-    val cluster = Cluster(ctx.system)
-    val node = cluster.selfMember
-    val cfg = ctx.system.settings.config
+      val cluster = Cluster(ctx.system)
+      val node = cluster.selfMember
+      val cfg = ctx.system.settings.config
 
-    if node hasRole "worker" then
-      val numberOfWorkers = Try(cfg.getInt("transformation.workers-per-node")).getOrElse(50)
-      // actor that sends StartExecution message to local Worker actors in a round robin fashion
-      val workerRouter = ctx.spawn(
-        behavior = Routers
-          .pool(numberOfWorkers) {
-            Behaviors
-              .supervise(Worker().narrow[StartExecution])
-              .onFailure(SupervisorStrategy.restart)
-          }
-          .withRoundRobinRouting(),
-        name = "worker-router"
-      )
-      // actors are registered to the ActorSystem receptionist using a special ServiceKey.
-      // All remote worker-routers will be registered to ClusterSystem actor system receptionist.
-      // When the "worker" node starts it registers the local worker-router to the Receptionist which is cluster-wide
-      // As a result "master" node can have access to remote worker-router and receive any updates about workers through worker-router
-      ctx.system.receptionist ! Receptionist.Register(Worker.WorkerRouterKey, workerRouter)
-
-    if node hasRole "master" then
-      given system: ActorSystem[Nothing] = ctx.system
-      given ec: ExecutionContextExecutor = ctx.executionContext
-      given timeout: Timeout = Timeout(3.seconds)
-
-      val numberOfLoadBalancers = Try(cfg.getInt("transformation.load-balancer")).getOrElse(3)
-      // pool of load balancers that forward StartExecution message to the remote worker-router actors in a round robin fashion
-      val loadBalancers = (1 to numberOfLoadBalancers).map: n =>
-        ctx.spawn(
-          behavior =
-            Routers
-              .group(Worker.WorkerRouterKey)
-              .withRoundRobinRouting(), // routes StartExecution message to the remote worker-router
-          name = s"load-balancer-$n"
+      if node hasRole "worker" then
+        val numberOfWorkers = Try(cfg.getInt("transformation.workers-per-node")).getOrElse(50)
+        // actor that sends StartExecution message to local Worker actors in a round robin fashion
+        val workerRouter = ctx.spawn(
+           behavior = Routers
+                   .pool(numberOfWorkers) {
+                      Behaviors
+                        .supervise(Worker().narrow[StartExecution])
+                        .onFailure(SupervisorStrategy.restart)
+                   }
+                   .withRoundRobinRouting(),
+           name = "worker-router"
         )
+        // actors are registered to the ActorSystem receptionist using a special ServiceKey.
+        // All remote worker-routers will be registered to ClusterBootstrap actor system receptionist.
+        // When the "worker" node starts it registers the local worker-router to the Receptionist which is cluster-wide
+        // As a result "master" node can have access to remote worker-router and receive any updates about workers through worker-router
+        ctx.system.receptionist ! Receptionist.Register(Worker.WorkerRouterKey, workerRouter)
 
-      val route =
-        pathPrefix("lang" / Segment): lang =>
-          post:
-            entity(as[String]): code =>
-              val loadBalancer = Random.shuffle(loadBalancers).head
-              val asyncResponse = loadBalancer
-                .ask[ExecutionResult](StartExecution(code, lang, _))
-                .map(_.value)
-                .recover(_ => "something went wrong")
+      if node hasRole "master" then
+        given system: ActorSystem[Nothing] = ctx.system
 
-              complete(asyncResponse)
+        given ec: ExecutionContextExecutor = ctx.executionContext
+
+        given timeout: Timeout = Timeout(3.seconds)
+
+        val numberOfLoadBalancers = Try(cfg.getInt("transformation.load-balancer")).getOrElse(3)
+        // pool of load balancers that forward StartExecution message to the remote worker-router actors in a round robin fashion
+        val loadBalancers = (1 to numberOfLoadBalancers).map { n =>
+           ctx.spawn(
+              behavior = Routers
+                      .group(Worker.WorkerRouterKey)
+                      .withRoundRobinRouting(), // routes StartExecution message to the remote worker-router
+              name = s"load-balancer-$n"
+           )
+        }
+
+       val route =
+          pathPrefix("lang" / Segment) { lang =>
+             post {
+                entity(as[String]) { code =>
+                   val loadBalancer = Random.shuffle(loadBalancers).head
+                   val asyncResponse = loadBalancer
+                           .ask[ExecutionResult](StartExecution(code, lang, _))
+                           .map(_.value)
+                           .recover(_ => "something went wrong")
+
+                   complete(asyncResponse)
+                }
+             }
+          }
 
       val host = Try(cfg.getString("http.host")).getOrElse("0.0.0.0")
       val port = Try(cfg.getInt("http.port")).getOrElse(8080)
@@ -1128,7 +1164,9 @@ object ClusterSystem:
 
       ctx.log.info("Server is listening on {}:{}", host, port)
 
-    Behaviors.empty[Nothing]
+      Behaviors.empty[Nothing]
+   }
+}
 ```
 
 The code above sets up an `Pekko` cluster with `worker` and `master` nodes.
@@ -1192,164 +1230,173 @@ import scala.concurrent.duration.*
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util.Random.shuffle
 
-object Simulator extends App:
+object Simulator extends App {
 
-  val actorSystem = "SimulatorSystem"
-  given system: ActorSystem = ActorSystem(actorSystem, ConfigFactory.load("simulator.conf"))
-  given ec: ExecutionContextExecutor = system.classicSystem.dispatcher
+   val actorSystem = "SimulatorSystem"
 
-  val http = Http(system)
+   given system: ActorSystem = ActorSystem(actorSystem, ConfigFactory.load("simulator.conf"))
 
-  val requestCount = AtomicInteger(0)
-  val responseTimes = AtomicLong(0)
-  val responseTimeDetails = mutable.ArrayBuffer.empty[Long]
-  val errors = AtomicInteger(0)
+   given ec: ExecutionContextExecutor = system.classicSystem.dispatcher
 
-  def stream(name: String, interval: FiniteDuration) = {
+   val http = Http(system)
 
-    // generate random code per 125 milliseconds
-    val generateRandomCode: Source[Code, Cancellable] = Source
-      .tick(0.seconds, interval, NotUsed)
-      .map(_ => Code.random)
+   val requestCount = AtomicInteger(0)
+   val responseTimes = AtomicLong(0)
+   val responseTimeDetails = mutable.ArrayBuffer.empty[Long]
+   val errors = AtomicInteger(0)
 
-    // send http request to remote code execution engine
-    val sendHttpRequest: Flow[Code, (Instant, Instant, String, Code), NotUsed] = Flow[Code]
-      .mapAsync(100) { code =>
-        val request = HttpRequest(
-          method = HttpMethods.POST,
-          uri = "http://localhost:8080/lang/python",
-          entity = HttpEntity(ContentTypes.`application/json`, ByteString(code.value))
-        )
+   def stream(name: String, interval: FiniteDuration) = {
 
-        val (now, requestId) = (Instant.now(), randomId())
-        println(s"[$name]: sending Request($requestId, $code) at $now")
+      // generate random code per 125 milliseconds
+      val generateRandomCode: Source[Code, Cancellable] = Source
+        .tick(0.seconds, interval, NotUsed)
+        .map(_ => Code.random)
 
-        http
-          .singleRequest(request)
-          .map { response =>
-            val end = Instant.now()
-            val duration = ChronoUnit.MILLIS.between(now, end)
-            response.discardEntityBytes()
+      // send http request to remote code execution engine
+      val sendHttpRequest: Flow[Code, (Instant, Instant, String, Code), NotUsed] = Flow[Code]
+        .mapAsync(100) { code =>
+          val request = HttpRequest(
+            method = HttpMethods.POST,
+            uri = "http://localhost:8080/lang/python",
+            entity = HttpEntity(ContentTypes.`application/json`, ByteString(code.value))
+          )
 
-            requestCount.incrementAndGet()
-            responseTimes.addAndGet(duration)
-            responseTimeDetails += duration
+          val (now, requestId) = (Instant.now(), randomId())
+          println(s"[$name]: sending Request($requestId, $code) at $now")
 
-            (now, end, requestId, code)
-          }
-          .recover:
-            case ex =>
-              println(s"[$name] failed: ${ex.getMessage}")
-              errors.incrementAndGet()
-              (now, Instant.now(), requestId, code)
-      }
+          http
+             .singleRequest(request)
+             .map { response =>
+               val end = Instant.now()
+               val duration = ChronoUnit.MILLIS.between(now, end)
+               response.discardEntityBytes()
 
-    // display the http response time
-    val displayResponseTime: Sink[(Instant, Instant, String, Code), Future[Done]] =
-      Sink.foreach: (start, end, requestId, code) =>
-        val duration = ChronoUnit.MILLIS.between(start, end)
-        println(
-          s"[$name]: received response for Request($requestId, $code) in $duration millis at: $end"
-        )
+               requestCount.incrementAndGet()
+               responseTimes.addAndGet(duration)
+               responseTimeDetails += duration
 
-    // join the stream
-    generateRandomCode
-      .via(sendHttpRequest)
-      .toMat(displayResponseTime)(Keep.right)
-  }
+               (now, end, requestId, code)
+             }
+             .recover {
+               case ex =>
+                 println(s"[$name] failed: ${ex.getMessage}")
+                 errors.incrementAndGet()
+                 (now, Instant.now(), requestId, code)
+               }
+            }
 
-  // run the stream
-  stream("simulator", 160.millis)
-    .run()
+      // display the http response time
+      val displayResponseTime: Sink[(Instant, Instant, String, Code), Future[Done]] =
+         Sink.foreach { (start, end, requestId, code) =>
+            val duration = ChronoUnit.MILLIS.between(start, end)
+            println(
+               s"[$name]: received response for Request($requestId, $code) in $duration millis at: $end"
+            )
+         }
 
-  system.scheduler.scheduleWithFixedDelay(60.seconds, 60.seconds): () =>
-    val count = requestCount.getAndSet(0)
-    val totalResponseTime = responseTimes.getAndSet(0)
-    val averageResponseTime = if (count > 0) totalResponseTime / count else 0
-    val errorCount = errors.getAndSet(0)
-    val p50 = percentile(responseTimeDetails, 50)
-    val p90 = percentile(responseTimeDetails, 90)
-    val p99 = percentile(responseTimeDetails, 99)
+      // join the stream
+      generateRandomCode
+        .via(sendHttpRequest)
+        .toMat(displayResponseTime)(Keep.right)
+   }
 
-    println("-" * 50)
-    println(s"Requests in last minute: $count")
-    println(s"Average response time: $averageResponseTime ms")
-    println(s"Error count: $errorCount")
-    println(s"Response time percentiles: p50=$p50 ms, p90=$p90 ms, p99=$p99 ms")
-    println("-" * 50)
+   // run the stream
+   stream("simulator", 160.millis)
+     .run()
 
-    responseTimeDetails.clear()
+   system.scheduler.scheduleWithFixedDelay(60.seconds, 60.seconds) { () =>
+      val count = requestCount.getAndSet(0)
+      val totalResponseTime = responseTimes.getAndSet(0)
+      val averageResponseTime = if (count > 0) totalResponseTime / count else 0
+      val errorCount = errors.getAndSet(0)
+      val p50 = percentile(responseTimeDetails, 50)
+      val p90 = percentile(responseTimeDetails, 90)
+      val p99 = percentile(responseTimeDetails, 99)
 
-  private def randomId(): String =
-    java.util.UUID
-      .randomUUID()
-      .toString
-      .replace("-", "")
-      .substring(1, 10)
+      println("-" * 50)
+      println(s"Requests in last minute: $count")
+      println(s"Average response time: $averageResponseTime ms")
+      println(s"Error count: $errorCount")
+      println(s"Response time percentiles: p50=$p50 ms, p90=$p90 ms, p99=$p99 ms")
+      println("-" * 50)
 
-  private def percentile(data: ArrayBuffer[Long], p: Double): Long =
-    if data.isEmpty then 0
-    else
-      val sortedData = data.sorted
-      val k = (sortedData.length * (p / 100.0)).ceil.toInt - 1
+      responseTimeDetails.clear()
+   }
 
-      sortedData(k)
+   private def randomId(): String =
+      java.util.UUID
+        .randomUUID()
+        .toString
+        .replace("-", "")
+        .substring(1, 10)
 
-  enum Code(val value: String):
-    case MemoryIntensive extends Code(Python.MemoryIntensive)
-    case CPUIntensive extends Code(Python.CPUIntensive)
-    case Random extends Code(Python.Random)
-    case Simple extends Code(Python.Simple)
-    case Instant extends Code(Python.Instant)
+   private def percentile(data: ArrayBuffer[Long], p: Double): Long =
+      if data.isEmpty then 0
+      else
+        val sortedData = data.sorted
+        val k = (sortedData.length * (p / 100.0)).ceil.toInt - 1
 
-  object Code:
-    def random: Code = shuffle(Code.values).head
+        sortedData(k)
 
-  object Python:
-    val MemoryIntensive =
-      """
-        |def memory_intensive_task(size_mb):
-        |    # Create a list of integers to consume memory
-        |    data = [0] * (size_mb * 1024 * 1024)  # Each element takes 8 bytes on a 64-bit system
-        |    return data
-        |print(memory_intensive_task(2))  # Allocate 10 MB of memory
-        |""".stripMargin
+   enum Code(val value: String) {
+      case MemoryIntensive extends Code(Python.MemoryIntensive)
+      case CPUIntensive extends Code(Python.CPUIntensive)
+      case Random extends Code(Python.Random)
+      case Simple extends Code(Python.Simple)
+      case Instant extends Code(Python.Instant)
+   }
 
-    val CPUIntensive =
-      """
-        |def cpu_intensive_task(n):
-        |    result = 0
-        |    for i in range(n):
-        |        result += i * i
-        |    return result
-        |print(cpu_intensive_task(50))
-        |""".stripMargin
+   object Code {
+      def random: Code = shuffle(Code.values).head
+   }
 
-    val Random =
-      """import random
-        |
-        |# Initialize the stop variable to False
-        |stop = False
-        |
-        |while not stop:
-        |    # Generate a random number between 1 and 100
-        |    random_number = random.randint(1, 1000)
-        |    print(f"Generated number: {random_number}")
-        |
-        |    # Check if the generated number is greater than 80
-        |    if random_number == 1000:
-        |        stop = True
-        |
-        |print("Found a number greater than 80. Exiting loop.")
-        |""".stripMargin
+   object Python {
+      val MemoryIntensive =
+         """
+           |def memory_intensive_task(size_mb):
+           |    # Create a list of integers to consume memory
+           |    data = [0] * (size_mb * 1024 * 1024)  # Each element takes 8 bytes on a 64-bit system
+           |    return data
+           |print(memory_intensive_task(2))  # Allocate 10 MB of memory
+           |""".stripMargin
 
-    val Simple =
-      """
-        |for i in range(1, 500):
-        |    print("number: " + str(i))
-        |""".stripMargin
+      val CPUIntensive =
+         """
+           |def cpu_intensive_task(n):
+           |    result = 0
+           |    for i in range(n):
+           |        result += i * i
+           |    return result
+           |print(cpu_intensive_task(50))
+           |""".stripMargin
 
-    val Instant = "print('hello world')"
+      val Random =
+         """import random
+           |
+           |# Initialize the stop variable to False
+           |stop = False
+           |
+           |while not stop:
+           |    # Generate a random number between 1 and 100
+           |    random_number = random.randint(1, 1000)
+           |    print(f"Generated number: {random_number}")
+           |
+           |    # Check if the generated number is greater than 80
+           |    if random_number == 1000:
+           |        stop = True
+           |
+           |print("Found a number greater than 80. Exiting loop.")
+           |""".stripMargin
+
+      val Simple =
+         """
+           |for i in range(1, 500):
+           |    print("number: " + str(i))
+           |""".stripMargin
+
+      val Instant = "print('hello world')"
+   }
+}
 ```
 
 Here are the important points:
@@ -1417,10 +1464,9 @@ The design choices made in this project ensure that our remote code execution en
 
 Building this distributed system with Scala 3 and Apache Pekko has been an enlightening experience. We've harnessed the power of actor-based concurrency, cluster management, and containerization to create a resilient and secure remote code execution engine. This project exemplifies how modern technologies can be integrated to solve complex problems in a scalable and efficient manner.
 
-Whether you're looking to implement a similar system or seeking insights into distributed computing with Scala and Pekko, we hope this blog post has provided valuable knowledge and inspiration. Thank you for following along!
+Whether you're looking to implement a similar system or seeking insights into distributed computing with Scala and Pekko, we hope this blog post has provided valuable knowledge and inspiration.
 
-Please, check out:
+Additionally, you can check out:
 - [Video demo](https://www.youtube.com/watch?v=sMlJC7Kr330) which includes running the `Simulator.scala`
-- [project on GitHub](https://github.com/ghurtchu/braindrill/) and provide feedback or improvement ideas.
 
 Thank you for following along!
