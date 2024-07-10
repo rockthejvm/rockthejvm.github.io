@@ -41,7 +41,7 @@ Let's get started then, shall we?
 
 > _Hey, it's Daniel here. Apache Pekko is great, and Nika has done a great job showcasing its features in a compact project we can explore exhaustively in this article. If you need to get started with Pekko, I've covered Pekko (and Akka) in a comprehensive bundle of courses about [Akka/Pekko Actors](https://rockthejvm.com/p/akka-essentials), [Akka/Pekko Streams](https://rockthejvm.com/p/akka-streams), and [Akka/Pekko HTTP](https://rockthejvm.com/p/akka-http), all of which are used in this article. Check them out if you're interested._
 
-## 2. Project Structure - here
+## 2. Project Structure
 
 To make the best of this article, I recommend checking out [the project on GitHub](https://github.com/ghurtchu/braindrill/) and following the code while reading this article, as many things will make sense along the way. 
 
