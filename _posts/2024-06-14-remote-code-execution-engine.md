@@ -4,7 +4,7 @@ date: 2024-06-14
 header:
     image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala,pekko,pekko-http,pekko-stream,pekko-cluster,docker,docker-compose,scala3]
-excerpt: "A Practical guide to building the distributed remote code execution engine in Scala and Pekko"
+excerpt: "A practical guide to building a distributed system with Scala and Pekko that does something real, like running other people's code."
 ---
 
 _by [Anzori (Nika) Ghurtchumelia](https://github.com/ghurtchu)_
