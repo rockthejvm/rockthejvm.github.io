@@ -12,3 +12,85 @@ toc_label: "In this article"
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
 At RockTheJvm we know very well the power of the Kotlin Arrow library. In details, we love the Raise DSL and its features. We already wrote about it (check out [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/)), but now it's time to understand how to test an application that uses the Raise DSL. Fasten your seatbelt, because we are going to dive into the testing world of Arrow Raise.
+
+## 1. Setting up the project
+
+First of all, we need to set up a Kotlin project. We can use Gradle or Maven, but in this article we are going to use Gradle. As usual, use the `gradle init` command from a shell to create a Gradle application from scratch. We need to add the following dependencies to the `build.gradle.kts` file:
+
+```kotlin
+dependencies {
+    implementation("io.arrow-kt:arrow-core:1.2.4")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
+    testImplementation(libs.junit.jupiter.engine) <<-- Understnd this
+    testImplementation("org.assertj:assertj-core:3.26.3")
+}
+```
+
+We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
+
+```kotlin
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-receivers")
+    }
+}
+```
+
+Please, take care that way we can provide options to compiler is changed since the article we wrote on context receivers (see [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/) for further details).
+
+By the way, in the appendix you can find the full `build.gradle.kts` file.
+
+Once we set up the project, we need some useful use case to test since this article will focus on testing the Raise DSL. We'll take a common example. We want to create some _business logic_ to create a stocks' portfolio for a user. Initially, we want to create a empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
+
+```kotlin
+interface CreatePortfolioUseCase {
+    context (Raise<DomainError>)
+    suspend fun createPortfolio(model: CreatePortfolio): PortfolioId
+}
+
+data class CreatePortfolio(
+    val userId: UserId,
+    val amount: Money,
+)
+
+@JvmInline
+value class UserId(val id: String)
+
+@JvmInline
+value class PortfolioId(val id: String)
+
+sealed interface DomainError
+```
+
+Let's analyze the above code for a second since the signature of the function tells us a lot of useful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. We can guess that it will persist the newly created portfolio into some kind of database. Once created the new portfolio, the function returns its identifier, which represents the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
+
+Now that we set up the use case, we can start implementation. Since we're diligent and well behaved developers, we want to write some tests before implementing the use case, following the Test-Driven Development (TDD) approach.
+
+## 2. Testing the use case
+
+First, we want to test the happy-path, which means that the use case creates a new portfolio for the user. We need to implement our use case interface with a concrete class, which usually we call a service:
+
+```kotlin
+fun createPortfolioUseCase(): CreatePortfolioUseCase =
+    object : CreatePortfolioUseCase {
+        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId = TODO()
+    }
+```
+
+As you might have noticed, the `createPortfolioUseCase` method is nothing more than a factory method.
+
+We'll use different testing frameworks. Let's begin with a setup that should be quite familiar to developers that uses Kotlin together with Spring: JUnit 5 as the test runtime and AssertJ for assertions.
+
+```kotlin
+internal class CreatePortfolioUseCaseTest {
+    
+    private val underTest = createPortfolioUseCase()
+
+    @Test
+    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
+        TODO("Not yet implemented")
+    }
+}
+```
+
+For convention, we call the unit we want to test with the name `underTest`. Moreover,  we used a common given-when-then structure for the name of the test.
