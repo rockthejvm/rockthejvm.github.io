@@ -116,5 +116,41 @@ In fact, the compiler gives us the following error:
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
 ```
 
-Nothing more true.
+Nothing more true. Unfortunately, we can't build an instance of the `Raise<E>` type our own. So, we need to use what the Arrow library gives us. One handful approach is to transform the `Raise<E>.() -> A` function in a more manageable `() -> Either<E, A>` function. Arrow gives us all the builders to create wrapped types from a function with a `Raise<E>` context, so, let's use them:
 
+```kotlin
+val actualResult: Either<DomainError, PortfolioId> =
+    either {
+        underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+    }
+```
+
+Now that we have a manageable function, we can add the assertion to our test, which becomes the following:
+
+```kotlin
+@Test
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() =
+    runTest {
+        val actualResult: Either<DomainError, PortfolioId> =
+            either {
+                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
+        Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
+    }
+```
+
+The `assertThat` function is a static method of the `org.assertj.core.api.Assertions`, and we take advantage of the `getOrNull` method of the `Either` type to get the value of the `Right` side of the `Either` type. In fact, the AssertJ library has no built-in support for Arrow types. However, we can use the assertions imported by the `assertj-arrow-core` library (if you're asking, the author of the library is me). The library as a lot of fluent assertions tailored on the Arrow library. For example, we can use the assertions on the `Either<E, A>` type directly, changing the above test as follows:
+
+```kotlin
+@Test
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using AssertJ-Arrow-Core)`() =
+    runTest {
+        val actualResult: Either<DomainError, PortfolioId> =
+            either {
+                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
+        EitherAssert.assertThat(actualResult).containsOnRight(PortfolioId("1"))
+    }
+```
+
+As we can see, we don't need to extract the value from the `Either<E, A>` anymore.
