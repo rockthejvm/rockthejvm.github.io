@@ -153,4 +153,50 @@ internal fun `given a userId and an initial amount, when executed, then it creat
     }
 ```
 
-As we can see, we don't need to extract the value from the `Either<E, A>` anymore.
+As we can see, we don't need to extract the value from the `Either<E, A>` anymore. 
+
+Now, we can implement the function `createPortfolio` to make the test pass. Let's do it in the dumb way, returning a fixed value:
+
+```kotlin
+fun createPortfolioUseCase(): CreatePortfolioUseCase =
+    object : CreatePortfolioUseCase {
+        context(Raise<DomainError>)
+        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
+    }
+```
+
+If we run our test, it should be green.
+
+Instead of transforming the `Raise<E>.() -> A` function in a `() -> Either<E, A>` function, we can use the `fold` function provided by the Arrow library:
+
+```kotlin
+@Test
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using fold)`() =
+    runTest {
+        fold(
+            block = { underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) },
+            recover = { Assertions.fail("The use case should not fail") },
+            transform = { Assertions.assertThat(it).isEqualTo(PortfolioId("1")) },
+        )
+    }
+```
+
+However, the above code is cumbersome and less readable than the previous one. Moreover, we need to apply a `fold` function every time we want to test a function declared in a `Raise<E>` context. Fortunately the `assertj-arrow-core` does it for us, defining some handful assertions that use the `fold` function under the hood:
+
+```kotlin
+@Test
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using RaiseAssert)`() =
+    RaiseAssert
+        .assertThat {
+            runBlocking {
+                underTest.createPortfolio(
+                    CreatePortfolio(
+                        UserId("bob"),
+                        Money(1000.0),
+                    ),
+                )
+            }
+        }.succeedsWith(PortfolioId("1"))
+```
+
+The test seems to be less readable than the previous just because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it. 
