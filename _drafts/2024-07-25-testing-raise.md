@@ -20,11 +20,15 @@ First of all, we need to set up a Kotlin project. We can use Gradle or Maven, bu
 ```kotlin
 dependencies {
     implementation("io.arrow-kt:arrow-core:1.2.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation(libs.junit.jupiter.engine) <<-- Understnd this
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0-RC")
     testImplementation("org.assertj:assertj-core:3.26.3")
 }
 ```
+
+Notice that we're using version `1.9.0-RC` of coroutines library since we need the support for version 2.0.0 of the Kotlin compiler
 
 We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
 
@@ -73,6 +77,7 @@ First, we want to test the happy-path, which means that the use case creates a n
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
+        context (Raise<DomainError>)
         override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId = TODO()
     }
 ```
@@ -87,10 +92,29 @@ internal class CreatePortfolioUseCaseTest {
     private val underTest = createPortfolioUseCase()
 
     @Test
-    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
+    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() = runTest {
         TODO("Not yet implemented")
     }
 }
 ```
 
-For convention, we call the unit we want to test with the name `underTest`. Moreover,  we used a common given-when-then structure for the name of the test.
+For convention, we call the unit we want to test with the name `underTest`. Moreover,  we used a common given-when-then structure for the name of the test. Moreover, not that we need to wrap the whole test inside a `runTest` call that gives us the coroutine context needed to run a suspending function.
+
+Now, we have to test that given some inputs the function will return the expected output. However, here we have a complication. The function is declared in the `Raise<DomainError>` context, which means that the code that calls it should be able to handle a possible error of type `DomainError`. In fact, the below implementation will not even compile:
+
+```kotlin
+@Test
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() = runTest {
+    val actualResult: PortfolioId =
+        underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+}
+```
+
+In fact, the compiler gives us the following error:
+
+```
+No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
+```
+
+Nothing more true.
+
