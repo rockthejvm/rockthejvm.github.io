@@ -25,6 +25,9 @@ dependencies {
     testImplementation(libs.junit.jupiter.engine) <<-- Understnd this
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0-RC")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    testImplementation("io.kotest:kotest-runner-junit5:5.9.0")
+    testImplementation("io.kotest.extensions:kotest-assertions-arrow:1.4.0")
+    testImplementation("io.kotest.extensions:kotest-assertions-arrow-fx-coroutines:1.4.0")
 }
 ```
 
@@ -87,7 +90,7 @@ As you might have noticed, the `createPortfolioUseCase` method is nothing more t
 We'll use different testing frameworks. Let's begin with a setup that should be quite familiar to developers that uses Kotlin together with Spring: JUnit 5 as the test runtime and AssertJ for assertions.
 
 ```kotlin
-internal class CreatePortfolioUseCaseTest {
+internal class CreatePortfolioUseCaseJUnit5Test {
     
     private val underTest = createPortfolioUseCase()
 
@@ -200,3 +203,41 @@ internal fun `given a userId and an initial amount, when executed, then it creat
 ```
 
 The test seems to be less readable than the previous just because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it. 
+
+We used JUnit 5 until now. However, we can switch to Kotest for sure. Kotest is a powerful testing framework for Kotlin, which is very closed to ScalaTest for the Scala language. Kotest has also a set of tailored assertions for some of the available types in Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
+
+So, let's translate the above tests in Kotest notation.
+
+```kotlin
+internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
+
+    val underTest = createPortfolioUseCase()
+
+    context("The create portfolio use case") {
+        should("create a portfolio for a user") {
+            val actualResult: Either<DomainError, PortfolioId> =
+                either {
+                    underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+                }
+
+            actualResult.shouldBeRight(PortfolioId("1"))
+        }
+    }
+})
+```
+
+This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, which is one of the available context. If you extend the `ShouldSpec` class, you have access to the `context` and `should` method, which are declared as function in the `ShouldSpecRootScope`. In fact, the lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
+
+In this test we used the approach of converting the `Raise<E>.() -> A` context into an `Either<E, A>`, and then we take advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
+
+Unfortunately, Kotest has no extension to test a `Raise<E>.() -> A` function directly. So, if we don't want to convert it into an `Either<E, A>`, we need to use the approach with the `fold` method:
+
+```kotlin
+should("create a portfolio for a user (using fold)") {
+    fold(
+        block = { underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) },
+        recover = { fail("The use case should not fail") },
+        transform = { it.shouldBe(PortfolioId("1")) },
+    )
+}
+```
