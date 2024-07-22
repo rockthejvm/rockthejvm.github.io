@@ -241,3 +241,43 @@ should("create a portfolio for a user (using fold)") {
     )
 }
 ```
+
+## XX. Appendix A
+
+As many of you might know, Kotlin _context receiver_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there will be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details). 
+
+In face of the above information, it's perfectly right to say you want to use context receivers. Let's see together how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
+
+As we know, a single context receiver is equivalent to declare it as a function receiver. So, the definition of our use case becomes as follows:
+
+```kotlin
+interface CreatePortfolioUseCaseWoContextReceivers {
+    suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId
+}
+
+fun createPortfolioUseCaseWoContextReceivers(): CreatePortfolioUseCaseWoContextReceivers =
+    object : CreatePortfolioUseCaseWoContextReceivers {
+        override suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
+    }
+```
+
+Easy-peasy. Now, we need to change the code that uses the new version of the use case. We can't call the `createPortfolio` function directly anymore on the `CreatePortfolioUseCaseWoContextReceivers` type, which now becomes a receiver. We need to use some scope function to create a scope with an instance of the `CreatePortfolioUseCaseWoContextReceivers` type. Usually, we use the `with` scope function for this purpose. Here is how the JUnit 5 test changes:
+
+```kotlin
+internal class CreatePortfolioUseCaseWoContextReceiversJUnit5Test {
+    private val underTest = createPortfolioUseCaseWoContextReceivers()
+
+    @Test
+    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() =
+        runTest {
+            val actualResult: Either<DomainError, PortfolioId> =
+                with(underTest) {
+                    either {
+                         createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+                    }
+                }
+            Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
+        }
+}
+```
+
