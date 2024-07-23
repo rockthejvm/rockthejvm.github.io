@@ -242,6 +242,78 @@ should("create a portfolio for a user (using fold)") {
 }
 ```
 
+So, we briefly introduce how to test a function that can raise an error of type `E`. What if the function calls another function that can raise an error too? We should not depend on code that is outside the unit we're testing. At the end of the day, we focus on unit test. Let's see what're the available options.
+
+## Mocking the Raise DSL
+
+When we're dealing with unit tests, and we depend on a component that is outside our unit under test, we have at least two choices: Fake objects and mocks. But, before going deep into the topic, let's prepare the playground. 
+
+Let's say that we have the constraint that we can't have more than one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use should retrieve the information through an interface we call _a port_. To keep it simple, a port is a way for our business logic (or application) to be driven by or to drive external system, without depending directly from them. Okay, too much theory for today. Let's jump into the code.
+
+First, we now have a way for our use case to fail: A portfolio for a user may already exists. So, we need to add a new error:
+
+```kotlin
+sealed interface DomainError {
+    data class PortfolioAlreadyExists(val userId: UserId) : DomainError
+}
+```
+
+Then, we can define the new port interface. Given a `userId`, we can retrieve the number of portfolios the user has.
+
+```kotlin
+interface CountUserPortfoliosPort {
+    context(Raise<DomainError>)
+    suspend fun countByUserId(userId: UserId): Int
+}
+```
+
+Finally,. let's wire all the things together, starting using our port into the use case:
+
+```kotlin
+fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): CreatePortfolioUseCase =
+    object : CreatePortfolioUseCase {
+        context(Raise<DomainError>)
+        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId =
+            if (countUserPortfolios.countByUserId(model.userId) > 0) {
+                raise(DomainError.PortfolioAlreadyExists(model.userId))
+            } else {
+                PortfolioId("1")
+            }
+    }
+```
+
+We're passing the port directly as an input parameter of the factory function called `createPortfolioUseCase`.
+
+As you might expect, we need to change our tests too. We need to understand what to pass to the `createPortfolioUseCase` function when creating the instance of the use case under test. As we said, we have at least two choices. The first one is called fake objects. Martin Fowler defines a fake object as follows (see the articles [Test Double](https://martinfowler.com/bliki/TestDouble.html) for further details):
+
+> Fake objects actually have working implementations, but usually take some shortcut which makes them not suitable for production.
+
+In our case, we need to implement the port we defined in a way suitable for our test. For example, let's say we want to implement a test verifying the use case when the user already has a portfolio. We can implement the port as follows:
+
+```kotlin
+private val fakeCountUserPortfolios: CountUserPortfoliosPort =
+    object : CountUserPortfoliosPort {
+        context(Raise<DomainError>)
+        override suspend fun countByUserId(userId: UserId): Int = if (userId == UserId("bob")) 0 else 1
+    }
+```
+
+So, if the given `userId` is anything than `bob`, the fake implementation returns that the user has a portfolio. Otherwise, it returns that the user has no portfolio. We can use the `fakeCountUserPortfolios` object to create the use case under test, and implement the test we need using Kotest:
+
+```kotlin
+should("raise a PortfolioAlreadyExists") {
+    val alice = UserId("alice")
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            underTest.createPortfolio(CreatePortfolio(alice, Money(1000.0)))
+        }
+    actualResult.shouldBeLeft(PortfolioAlreadyExists(alice))
+}
+```
+
+The implementation of the test in JUnit 5 is more or less the same, so we'll omit it.
+
+
 ## XX. Appendix A
 
 As many of you might know, Kotlin _context receiver_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there will be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details). 
@@ -281,3 +353,4 @@ internal class CreatePortfolioUseCaseWoContextReceiversJUnit5Test {
 }
 ```
 
+From here on, everything should run quite smoothly.
