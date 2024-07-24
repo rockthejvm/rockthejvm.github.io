@@ -313,6 +313,68 @@ should("raise a PortfolioAlreadyExists") {
 
 The implementation of the test in JUnit 5 is more or less the same, so we'll omit it.
 
+So, we didn't find many concerns in using fake objects. The only annoying thing is that we need to implement our own the port twice: one for production execution and one for tests. Many developers don't like this trade-off and prefer using stubs and mocks.
+
+We start again from the definition of mocks given by Martin Fowler to introduce stubs and mocks:
+
+> * **Stubs** provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.
+> * **Mocks** are pre-programmed with expectations which form a specification of the calls they are expected to receive. They can throw an exception if they receive a call they don't expect and are checked during verification to ensure they got all the calls they were expecting. 
+
+For sake of simplicity, we'll call both test doubles as *mocks*. So, mocks are partial implementation of an interface, that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals.
+
+There are a lot of libraries that can help us to create mocks. The most famous in the Java world is [Mockito](https://site.mockito.org/). However, it poorly integrates with Kotlin, and it's not idiomatic. We can use [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's very powerful and easy to use. Again, this article is not intended to be a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
+
+Mocking a dependency is a three steps process. First, you need to retrieve from the library an empty mock of the dependency:
+
+```kotlin
+val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
+```
+
+The `mockk()` factory function provides a proxy to the port we can instrument to our needs. The second step is instrumentation of the mock indeed. Based on what the tutorials said on the net, we should instrument the `countUserPortfoliosMock` in the following way:
+
+```kotlin
+coEvery { 
+    countUserPortfoliosMock.countByUserId(UserId("bob"))
+} returns 0
+```
+
+Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function as a suspending function. Despite of that, we get an error if we try to compile it:
+
+```
+No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
+```
+
+The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters. So, the compiler is telling us we're not giving enough parameters to the function to be mocked.
+
+So, we need to add the missing parameter with a matcher, as we would do with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
+
+```kotlin
+coEvery {
+    with(any<Raise<DomainError>>()) {
+        countUserPortfoliosMock.countByUserId(UserId("bob"))
+    }
+} returns 0
+```
+
+Now, the compiler is happier, and we can proceed with the rest of the test code:
+
+```kotiln
+should("create a portfolio for a user (using mockk") {
+    val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
+    val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
+    coEvery {
+        with(any<Raise<DomainError>>()) {
+            countUserPortfoliosMock.countByUserId(UserId("bob"))
+        }
+    } returns 0
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+        }
+    actualResult.shouldBeRight(PortfolioId("1"))
+}
+```
+
 
 ## XX. Appendix A
 
