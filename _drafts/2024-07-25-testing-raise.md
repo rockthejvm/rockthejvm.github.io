@@ -375,6 +375,66 @@ should("create a portfolio for a user (using mockk") {
 }
 ```
 
+There is another way to achieve the same result. We need an instance of a `Raise<E>` to mock our function. We say that one way is to use the matchers inside the scoped function `with`. Another way is to provide a real instance of a `Raise<E>`. As we might know, the only ways to retrieve one is using the `Raise.fold` function, or one of the builder methods, like the `Raise.either` we saw. In our case, we were already using the `either` function. So, it's enough to just extend its scope:
+
+```kotlin
+should("create a portfolio for a user (using mockk and either") {
+    val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
+    val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            coEvery {
+                countUserPortfoliosMock.countByUserId(UserId("bob"))
+            } returns 0
+            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+        }
+    actualResult.shouldBeRight(PortfolioId("1"))
+}
+```
+
+Well, now, we left out only the case in which we want to mock a function that raises an error. As you can imagine, it's not far from what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the `answers` generic function indeed.
+
+First we need to add a new error to our errors' hierarchy:
+
+```kotlin
+sealed interface DomainError {
+    data class PortfolioAlreadyExists(
+        val userId: UserId,
+    ) : DomainError
+
+    data class GenericError(
+        val throwable: Throwable,
+    ) : DomainError
+}
+```
+
+The `GenericError` represents an unexpected error, such as a problem with the network. Then, we can implement the test:
+
+```kotlin
+should("return a PortfolioAlreadyExists error for an existing user") {
+    val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
+    val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
+    val exception = RuntimeException("Ooops!")
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            coEvery {
+                countUserPortfoliosMock.countByUserId(UserId("bob"))
+            } answers {
+                raise(GenericError(exception))
+            }
+            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+        }
+    actualResult.shouldBeLeft(GenericError(exception))
+}
+```
+
+The above test verifies the behavior of the use case when there was an error during the execution of the port. As we said, we used the `answers` function which is the most generic available in MockK.
+
+For the sake of completeness, we can translate the above test using Mockito, so we can have the full picture of the differences between the two libraries:
+
+```kotlin
+
+```
 
 ## XX. Appendix A
 
