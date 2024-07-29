@@ -11,11 +11,11 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-At RockTheJvm we know very well the power of the Kotlin Arrow library. In details, we love the Raise DSL and its features. We already wrote about it (check out [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/)), but now it's time to understand how to test an application that uses the Raise DSL. Fasten your seatbelt, because we are going to dive into the testing world of Arrow Raise.
+At RockTheJvm, we know the power of the Kotlin Arrow library well. We also love the Raise DSL and its features. We already wrote about it (check out [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/)), but now it's time to understand how to test an application that uses the Raise DSL. To fully grasp the concepts we'll be discussing, it's important to have a tangible understanding of Kotlin, Arrow library, and the Raise DSL. We recommend checking out our previous posts or resources if you need to become more familiar with them. Fasten your seatbelt because we will dive into the testing world of Arrow Raise.
 
 ## 1. Setting up the project
 
-First of all, we need to set up a Kotlin project. We can use Gradle or Maven, but in this article we are going to use Gradle. As usual, use the `gradle init` command from a shell to create a Gradle application from scratch. We need to add the following dependencies to the `build.gradle.kts` file:
+First of all, we need to set up a Kotlin project. We can use Gradle or Maven, but in this article, we will use Gradle. As usual, use the `gradle init` command from a shell to create a Gradle application from scratch. We need to add the following dependencies to the `build.gradle.kts` file:
 
 ```kotlin
 dependencies {
@@ -32,7 +32,7 @@ dependencies {
 }
 ```
 
-Notice that we're using version `1.9.0-RC` of coroutines library since we need the support for version 2.0.0 of the Kotlin compiler
+Notice that we're using version `1.9.0-RC` of the coroutines library since we need support for the Kotlin compiler's version 2.0.0.
 
 We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
 
@@ -44,9 +44,9 @@ tasks.withType<KotlinCompile>().configureEach {
 }
 ```
 
-Please, take care that way we can provide options to compiler is changed since the article we wrote on context receivers (see [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/) for further details).
+Please take care that the way we can provide options to the compiler has changed since the article we wrote on context receivers (see [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/) for further details).
 
-Once we set up the project, we need some useful use case to test since this article will focus on testing the Raise DSL. We'll take a common example. We want to create some _business logic_ to create a stocks' portfolio for a user. Initially, we want to create a empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
+Once we set up the project, we need some helpful use cases to test since this article will focus on testing the Raise DSL. We'll take a typical example. We want to create some _business logic_ to create a stock portfolio for a user. Initially, we want to make an empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
 
 ```kotlin
 interface CreatePortfolioUseCase {
@@ -68,13 +68,13 @@ value class PortfolioId(val id: String)
 sealed interface DomainError
 ```
 
-Let's analyze the above code for a second since the signature of the function tells us a lot of useful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. We can guess that it will persist the newly created portfolio into some kind of database. Once created the new portfolio, the function returns its identifier, which represents the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
+Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. We can guess that it will persist in the newly created portfolio in some databases. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
 
-Now that we set up the use case, we can start implementation. Since we're diligent and well behaved developers, we want to write some tests before implementing the use case, following the Test-Driven Development (TDD) approach.
+Now that we have set up the use case, we can start implementing it. Since we are diligent and well-behaved developers, we want to write some tests before implementing the use case, following the Test-Driven Development (TDD) approach.
 
 ## 2. Testing the use case
 
-First, we want to test the happy-path, which means that the use case creates a new portfolio for the user. We need to implement our use case interface with a concrete class, which usually we call a service:
+First, we want to test the happy path, meaning the use case creates a new portfolio for the user. We need to implement our use case interface with a concrete class, which we usually call a service:
 
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
@@ -86,7 +86,7 @@ fun createPortfolioUseCase(): CreatePortfolioUseCase =
 
 As you might have noticed, the `createPortfolioUseCase` method is nothing more than a factory method.
 
-We'll use different testing frameworks. Let's begin with a setup that should be quite familiar to developers that uses Kotlin together with Spring: JUnit 5 as the test runtime and AssertJ for assertions.
+We'll use different testing frameworks. Let's begin with a setup that should be quite familiar to developers: Kotlin together with Spring: JUnit 5 as the test runtime and AssertJ for assertions.
 
 ```kotlin
 internal class CreatePortfolioUseCaseJUnit5Test {
@@ -100,9 +100,9 @@ internal class CreatePortfolioUseCaseJUnit5Test {
 }
 ```
 
-For convention, we call the unit we want to test with the name `underTest`. Moreover,  we used a common given-when-then structure for the name of the test. Moreover, not that we need to wrap the whole test inside a `runTest` call that gives us the coroutine context needed to run a suspending function.
+For convention, we call the unit we want to test `underTest`. Moreover, we used a typical given-when-then structure for the test's name. Furthermore, we do not need to wrap the whole test inside a `runTest` call that gives us the coroutine context required to run a suspending function.
 
-Now, we have to test that given some inputs the function will return the expected output. However, here we have a complication. The function is declared in the `Raise<DomainError>` context, which means that the code that calls it should be able to handle a possible error of type `DomainError`. In fact, the below implementation will not even compile:
+Now, we have to test that, given some inputs, the function will return the expected output. However, here we have a complication. The function is declared in the `Raise<DomainError>` context, which means that the code that calls it should be able to handle a possible error of type `DomainError`. The below implementation will not even compile:
 
 ```kotlin
 @Test
@@ -112,13 +112,13 @@ internal fun `given a userId and an initial amount, when executed, then it creat
 }
 ```
 
-In fact, the compiler gives us the following error:
+The compiler gives us the following error:
 
 ```
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
 ```
 
-Nothing more true. Unfortunately, we can't build an instance of the `Raise<E>` type our own. So, we need to use what the Arrow library gives us. One handful approach is to transform the `Raise<E>.() -> A` function in a more manageable `() -> Either<E, A>` function. Arrow gives us all the builders to create wrapped types from a function with a `Raise<E>` context, so, let's use them:
+Nothing more true. Unfortunately, we can't build our own instance of the `Raise<E>` type. So, we need to use what the Arrow library gives us. One handful approach is to transform the `Raise<E>.() -> A` function in a more manageable `() -> Either<E, A>` function. Arrow gives us all the builders to create wrapped types from a function with a `Raise<E>` context, so let's use them:
 
 ```kotlin
 val actualResult: Either<DomainError, PortfolioId> =
@@ -141,7 +141,7 @@ internal fun `given a userId and an initial amount, when executed, then it creat
     }
 ```
 
-The `assertThat` function is a static method of the `org.assertj.core.api.Assertions`, and we take advantage of the `getOrNull` method of the `Either` type to get the value of the `Right` side of the `Either` type. In fact, the AssertJ library has no built-in support for Arrow types. However, we can use the assertions imported by the `assertj-arrow-core` library (if you're asking, the author of the library is me). The library as a lot of fluent assertions tailored on the Arrow library. For example, we can use the assertions on the `Either<E, A>` type directly, changing the above test as follows:
+The `assertThat` function is a static method of the `org.assertj.core.api.Assertions`, and we take advantage of the `getOrNull` method of the `Either` type to get the value of the `Right` side of the `Either` type. The AssertJ library has no built-in support for Arrow types. However, we can use the assertions imported by the `assertj-arrow-core` library (if you're asking, the library's author is me). The library has a lot of fluent assertions tailored to the Arrow library. For example, we can use the assertions on the `Either<E, A>` type directly, changing the above test as follows:
 
 ```kotlin
 @Test
@@ -155,9 +155,9 @@ internal fun `given a userId and an initial amount, when executed, then it creat
     }
 ```
 
-As we can see, we don't need to extract the value from the `Either<E, A>` anymore. 
+As we can see, we don't need to extract the value from the `Either<E, A>` anymore.
 
-Now, we can implement the function `createPortfolio` to make the test pass. Let's do it in the dumb way, returning a fixed value:
+Now, we can implement the function `createPortfolio` to make the test pass. Let's do it in a dumb way, returning a fixed value:
 
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
@@ -183,7 +183,7 @@ internal fun `given a userId and an initial amount, when executed, then it creat
     }
 ```
 
-However, the above code is cumbersome and less readable than the previous one. Moreover, we need to apply a `fold` function every time we want to test a function declared in a `Raise<E>` context. Fortunately the `assertj-arrow-core` does it for us, defining some handful assertions that use the `fold` function under the hood:
+However, the above code is cumbersome and less readable than the previous one. Moreover, we must apply a `fold` function whenever we want to test a function declared in a `Raise<E>` context. Fortunately, the `assertj-arrow-core` does it for us, defining some handful of assertions that use the `fold` function under the hood:
 
 ```kotlin
 @Test
@@ -201,9 +201,9 @@ internal fun `given a userId and an initial amount, when executed, then it creat
         }.succeedsWith(PortfolioId("1"))
 ```
 
-The test seems to be less readable than the previous just because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it. 
+The test is less readable than the previous one because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it.
 
-We used JUnit 5 until now. However, we can switch to Kotest for sure. Kotest is a powerful testing framework for Kotlin, which is very closed to ScalaTest for the Scala language. Kotest has also a set of tailored assertions for some of the available types in Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
+We have used JUnit 5 until now. However, we can definitely switch to Kotest. Kotest is a powerful testing framework for Kotlin, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
 
 So, let's translate the above tests in Kotest notation.
 
@@ -225,9 +225,9 @@ internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
 })
 ```
 
-This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, which is one of the available context. If you extend the `ShouldSpec` class, you have access to the `context` and `should` method, which are declared as function in the `ShouldSpecRootScope`. In fact, the lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
+This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, which are declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
 
-In this test we used the approach of converting the `Raise<E>.() -> A` context into an `Either<E, A>`, and then we take advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
+In this test, we used the approach of converting the `Raise<E>.() -> A` context into an `Either<E, A>`, and then we took advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
 
 Unfortunately, Kotest has no extension to test a `Raise<E>.() -> A` function directly. So, if we don't want to convert it into an `Either<E, A>`, we need to use the approach with the `fold` method:
 
@@ -241,7 +241,7 @@ should("create a portfolio for a user (using fold)") {
 }
 ```
 
-So, we briefly introduce how to test a function that can raise an error of type `E`. What if the function calls another function that can raise an error too? We should not depend on code that is outside the unit we're testing. At the end of the day, we focus on unit test. Let's see what're the available options.
+So, we briefly introduce how to test a function that can raise an error of type `E`. What if the function calls another function that can raise an error, too? We should not depend on code outside the unit we're testing. At the end of the day, we focus on unit testing. Let's see what the available options are.
 
 ## 3. Mocking the Raise DSL
 
