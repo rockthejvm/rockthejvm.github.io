@@ -227,9 +227,9 @@ internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
 })
 ```
 
-This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
+This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are lambdas with receiver given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
 
-In this test, we used the approach of converting the `Raise<E>.() -> A` context into an `Either<E, A>`, and then we took advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
+In this test, we used the approach of converting the `Raise<E>.() -> A` context into an `() -> Either<E, A>`, and then we took advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
 
 Unfortunately, Kotest has no extension to test a `Raise<E>.() -> A` function directly. So, if we don't want to convert it into an `Either<E, A>`, we need to use the approach with the `fold` method:
 
@@ -249,7 +249,7 @@ So, we briefly introduce how to test a function that can raise an error of type 
 
 When dealing with unit tests and depending on a component outside our unit under test, we have at least two choices: fake objects and mocks. But before going deep into the topic, let's prepare the playground.
 
-Let's say we only have one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use case should retrieve the information through an interface we call _a port_. A port is a way for our business logic (or application) to be driven by or to drive external systems without depending directly on them. Okay, too much theory for today. Let's jump into the code.
+Let's say we only have one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. **If we want to use a hexagonal architecture pattern, the use case should retrieve the information through an interface we call _a port_**. A port is a way for our business logic (or application) to be driven by or to drive external systems without depending directly on them. Okay, too much theory for today. Let's jump into the code.
 
 First, we now have a way for our use case to fail: A portfolio for a user may already exist. So, we need to add a new error:
 
@@ -259,7 +259,7 @@ sealed interface DomainError {
 }
 ```
 
-Then, we can define the new port interface. Given a `userId`, we can retrieve the user's number of portfolios.
+Then, we can define the new port interface. Given a `userId`, we can count the user's portfolios.
 
 ```kotlin
 interface CountUserPortfoliosPort {
@@ -274,12 +274,12 @@ Finally, let's wire all the things together, starting using our port into the us
 fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
         context(Raise<DomainError>)
-        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId =
-            if (countUserPortfolios.countByUserId(model.userId) > 0) {
+        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId {
+            ensure(countUserPortfolios.countByUserId(model.userId) == 0) {
                 raise(DomainError.PortfolioAlreadyExists(model.userId))
-            } else {
-                PortfolioId("1")
             }
+            return PortfolioId("1")
+        }
     }
 ```
 
@@ -289,13 +289,14 @@ As you might expect, we need to change our tests too. When creating the use case
 
 > Fake objects actually have working implementations, but they usually take some shortcut, which makes them unsuitable for production.
 
-In our case, we need to implement the port we defined correctly for our test. For example, we want to implement a test verifying the use case when the user already has a portfolio. We can implement the port as follows:
+In our case, we need to implement the port for our test. For example, we want to implement a test verifying the use case when the user already has a portfolio. We can implement the port as follows:
 
 ```kotlin
 private val fakeCountUserPortfolios: CountUserPortfoliosPort =
     object : CountUserPortfoliosPort {
         context(Raise<DomainError>)
-        override suspend fun countByUserId(userId: UserId): Int = if (userId == UserId("bob")) 0 else 1
+        override suspend fun countByUserId(userId: UserId): Int = 
+            if (userId == UserId("bob")) 0 else 1
     }
 ```
 
@@ -318,14 +319,14 @@ So, we didn't find many concerns about using fake objects. The only annoying thi
 
 We start again from the definition of mocks given by Martin Fowler to introduce stubs and mocks:
 
-> * **Stubs** provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.
-> * **Mocks** are pre-programmed with expectations which form a specification of the calls they are expected to receive. They can throw an exception if they receive a call they don't expect and are checked during verification to ensure they got all the calls they were expecting. 
+> **Stubs** provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.
+> **Mocks** are pre-programmed with expectations which form a specification of the calls they are expected to receive. They can throw an exception if they receive a call they don't expect and are checked during verification to ensure they got all the calls they were expecting. 
 
-For the sake of simplicity, we'll call both test doubles as *mocks*. So, mocks are partial implementations of an interface that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals.
+For the sake of simplicity, we'll call both test doubles as *mocks*. So, **mocks are partial implementations of an interface that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals**.
 
 There are a lot of libraries that can help us to create mocks. The most famous in Java is [Mockito](https://site.mockito.org/). In the Kotlin ecosystem, its counterpart is called [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's mighty and easy to use. Again, this article is intended to be something other than a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
 
-Mocking a dependency is a three-step process. First, you need to retrieve from the library an empty mock of the dependency:
+**Mocking a dependency is a three-step process**. First, you need to retrieve from the library an empty mock of the dependency:
 
 ```kotlin
 val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
@@ -339,15 +340,15 @@ coEvery {
 } returns 0
 ```
 
-Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function to be a suspending function. Despite that, we get an error if we try to compile it:
+The above code translates to the following sentence: "Every time we call the method `countByUserId` of the instance `countUserPortfoliosMock` with input equals to `UserId("bob")`, we'll get the value `0` as a result." Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function to be a suspending function. Despite that, we get an error if we try to compile it:
 
 ```
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
 ```
 
-The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters. So, the compiler tells us we're not giving enough parameters for the function to be mocked.
+The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that **declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters**. So, the compiler tells us we're not giving enough parameters for the function to be mocked.
 
-So, we need to add the missing parameter with a matcher, as with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
+We need to add the missing parameter with a matcher, as with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
 
 ```kotlin
 coEvery {
@@ -359,7 +360,7 @@ coEvery {
 
 Now, the compiler is happier, and we can proceed with the rest of the test code:
 
-```kotiln
+```kotlin
 should("create a portfolio for a user (using mockk") {
     val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
     val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
