@@ -70,7 +70,7 @@ sealed interface DomainError
 
 Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. It will likely persist in the newly created portfolio in some databases. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
 
-Now that we have set up, we can start implementing the use case. Since we are diligent and well-behaved developers, we want to write tests before implementing the use case, following the Test-Driven Development (TDD) approach.
+We can start implementing the use case now that we have set up. Since we are diligent and well-behaved developers, we want to write tests before implementing the use case, following the Test-Driven Development (TDD) approach.
 
 ## 2. Testing the use case
 
@@ -118,7 +118,7 @@ The compiler gives us the following error:
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
 ```
 
-Nothing more true. Unfortunately, we can't build our own instance of the `Raise<E>` type. So, we need to use what the Arrow library gives us. One handful approach is to transform the `Raise<E>.() -> A` function in a more manageable `() -> Either<E, A>` function. Arrow gives us all the builders to create wrapped types from a function with a `Raise<E>` context, so let's use them:
+Nothing more true. Unfortunately, we can't build our instance of the `Raise<E>` type. So, we need to use what the Arrow library gives us. One handful approach is to transform the `Raise<E>.() -> A` function in a more manageable `() -> Either<E, A>` function. Arrow gives us all the builders to create wrapped types from a function with a `Raise<E>` context, so let's use them:
 
 ```kotlin
 val actualResult: Either<DomainError, PortfolioId> =
@@ -203,7 +203,7 @@ internal fun `given a userId and an initial amount, when executed, then it creat
 
 The test is less readable than the previous one because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it.
 
-We have used JUnit 5 until now. However, we can definitely switch to Kotest. Kotest is a robust testing framework for Kotlin, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
+We have used JUnit 5 until now. However, we can switch to Kotest. Kotest is a robust testing framework for Kotlin, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
 
 So, let's translate the above tests in Kotest notation.
 
@@ -247,7 +247,7 @@ So, we briefly introduce how to test a function that can raise an error of type 
 
 When dealing with unit tests and depending on a component outside our unit under test, we have at least two choices: fake objects and mocks. But before going deep into the topic, let's prepare the playground.
 
-Let's say we can only have one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use case should retrieve the information through an interface we call _a port_. A port is a way for our business logic (or application) to be driven by or to drive external systems without depending directly on them. Okay, too much theory for today. Let's jump into the code.
+Let's say we only have one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use case should retrieve the information through an interface we call _a port_. A port is a way for our business logic (or application) to be driven by or to drive external systems without depending directly on them. Okay, too much theory for today. Let's jump into the code.
 
 First, we now have a way for our use case to fail: A portfolio for a user may already exist. So, we need to add a new error:
 
@@ -283,7 +283,7 @@ fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): Create
 
 We're passing the port directly as an input parameter of the factory function `createPortfolioUseCase`.
 
-As you might expect, we need to change our tests too. We need to understand what to pass to the `createPortfolioUseCase` function when creating the use case instance under test. As we said, we have at least two choices. The first one is called fake objects. Martin Fowler defines a fake object as follows (see the articles [Test Double](https://martinfowler.com/bliki/TestDouble.html) for further details):
+As you might expect, we need to change our tests too. When creating the use case instance under test, we must understand what to pass to the `createPortfolioUseCase` function. As we said, we have at least two choices. The first one is called fake objects. Martin Fowler defines a fake object as follows (see the articles [Test Double](https://martinfowler.com/bliki/TestDouble.html) for further details):
 
 > Fake objects actually have working implementations, but they usually take some shortcut, which makes them unsuitable for production.
 
@@ -458,11 +458,11 @@ In this article, we saw how to test a function declared in a `Raise<E>` context.
 
 ## 5. Appendix A
 
-As many of you might know, Kotlin _context receiver_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there will be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details). 
+As many of you might know, Kotlin _context receivers_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there would be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details).
 
-In face of the above information, it's perfectly right to say you want to use context receivers. Let's see together how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
+Given the above information, it's perfectly right to say you want to use context receivers. Let's see how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
 
-As we know, a single context receiver is equivalent to declare it as a function receiver. So, the definition of our use case becomes as follows:
+As we know, a single context receiver is equivalent to declaring it as a function receiver. So, the definition of our use case becomes as follows:
 
 ```kotlin
 interface CreatePortfolioUseCaseWoContextReceivers {
@@ -475,7 +475,7 @@ fun createPortfolioUseCaseWoContextReceivers(): CreatePortfolioUseCaseWoContextR
     }
 ```
 
-Easy-peasy. Now, we need to change the code that uses the new version of the use case. We can't call the `createPortfolio` function directly anymore on the `CreatePortfolioUseCaseWoContextReceivers` type, which now becomes a receiver. We need to use some scope function to create a scope with an instance of the `CreatePortfolioUseCaseWoContextReceivers` type. Usually, we use the `with` scope function for this purpose. Here is how the JUnit 5 test changes:
+Easy-peasy. Now, we need to change the code to use the new version of the use case. We can't call the `createPortfolio` function directly on the `CreatePortfolioUseCaseWoContextReceivers` type, which now becomes a receiver. We need to use some scope function to create a scope with an instance of the `CreatePortfolioUseCaseWoContextReceivers` type. Usually, we use the `with` scope function for this purpose. Here is how the JUnit 5 test changes:
 
 ```kotlin
 internal class CreatePortfolioUseCaseWoContextReceiversJUnit5Test {
