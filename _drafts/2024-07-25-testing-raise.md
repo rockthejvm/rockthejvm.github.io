@@ -310,26 +310,26 @@ should("raise a PortfolioAlreadyExists") {
 }
 ```
 
-The implementation of the test in JUnit 5 is more or less the same, so we'll omit it.
+Implementing the test in JUnit 5 is the same, so we'll omit it.
 
-So, we didn't find many concerns in using fake objects. The only annoying thing is that we need to implement our own the port twice: one for production execution and one for tests. Many developers don't like this trade-off and prefer using stubs and mocks.
+So, we didn't find many concerns about using fake objects. The only annoying thing is that we must implement our port twice: one for production execution and one for tests. Many developers prefer something other than this trade-off and use stubs and mocks.
 
 We start again from the definition of mocks given by Martin Fowler to introduce stubs and mocks:
 
 > * **Stubs** provide canned answers to calls made during the test, usually not responding at all to anything outside what's programmed in for the test.
 > * **Mocks** are pre-programmed with expectations which form a specification of the calls they are expected to receive. They can throw an exception if they receive a call they don't expect and are checked during verification to ensure they got all the calls they were expecting. 
 
-For sake of simplicity, we'll call both test doubles as *mocks*. So, mocks are partial implementation of an interface, that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals.
+For the sake of simplicity, we'll call both test doubles as *mocks*. So, mocks are partial implementations of an interface that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals.
 
-There are a lot of libraries that can help us to create mocks. The most famous in the Java world is [Mockito](https://site.mockito.org/). In the Kotlin ecosystem, its counterpart is called [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's very powerful and easy to use. Again, this article is not intended to be a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
+There are a lot of libraries that can help us to create mocks. The most famous in Java is [Mockito](https://site.mockito.org/). In the Kotlin ecosystem, its counterpart is called [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's mighty and easy to use. Again, this article is intended to be something other than a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
 
-Mocking a dependency is a three steps process. First, you need to retrieve from the library an empty mock of the dependency:
+Mocking a dependency is a three-step process. First, you need to retrieve from the library an empty mock of the dependency:
 
 ```kotlin
 val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
 ```
 
-The `mockk()` factory function provides a proxy to the port we can instrument to our needs. The second step is instrumentation of the mock indeed. Based on what the tutorials said on the net, we should instrument the `countUserPortfoliosMock` in the following way:
+The `mockk()` factory function provides a proxy to the port we can use to instrument our needs. The second step is the instrumentation of the mock indeed. Based on what the tutorials said on the net, we should instrument the `countUserPortfoliosMock` in the following way:
 
 ```kotlin
 coEvery { 
@@ -337,15 +337,15 @@ coEvery {
 } returns 0
 ```
 
-Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function as a suspending function. Despite of that, we get an error if we try to compile it:
+Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function to be a suspending function. Despite that, we get an error if we try to compile it:
 
 ```
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
 ```
 
-The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters. So, the compiler is telling us we're not giving enough parameters to the function to be mocked.
+The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters. So, the compiler tells us we're not giving enough parameters for the function to be mocked.
 
-So, we need to add the missing parameter with a matcher, as we would do with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
+So, we need to add the missing parameter with a matcher, as with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
 
 ```kotlin
 coEvery {
@@ -374,7 +374,7 @@ should("create a portfolio for a user (using mockk") {
 }
 ```
 
-There is another way to achieve the same result. We need an instance of a `Raise<E>` to mock our function. We say that one way is to use the matchers inside the scoped function `with`. Another way is to provide a real instance of a `Raise<E>`. As we might know, the only ways to retrieve one is using the `Raise.fold` function, or one of the builder methods, like the `Raise.either` we saw. In our case, we were already using the `either` function. So, it's enough to just extend its scope:
+There is another way to achieve the same result. We need a `Raise<E>` instance to mock our function. Using the matchers inside the scoped function `with` is one way. Another way is to provide an actual instance of a `Raise<E>`. As we might know, the only way to retrieve one is using the `Raise.fold` function or one of the builder methods, like the `Raise.either` we saw. In our case, we were already using the `either` function. So, it's enough to extend its scope:
 
 ```kotlin
 should("create a portfolio for a user (using mockk and either") {
@@ -391,9 +391,9 @@ should("create a portfolio for a user (using mockk and either") {
 }
 ```
 
-Well, now, we left out only the case in which we want to mock a function that raises an error. As you can imagine, it's not far from what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the `answers` generic function indeed.
+We left out only the case in which we want to mock a function that raises an error. As you can imagine, it's close to what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the `answers` generic function indeed.
 
-First we need to add a new error to our errors' hierarchy:
+First, we need to add a new error to our errors hierarchy:
 
 ```kotlin
 sealed interface DomainError {
@@ -427,9 +427,9 @@ should("return a PortfolioAlreadyExists error for an existing user") {
 }
 ```
 
-The above test verifies the behavior of the use case when there was an error during the execution of the port. As we said, we used the `answers` function which is the most generic available in MockK.
+The above test verifies the behavior of the use case when there was an error during the execution of the port. We used the `answers` function, the most generic one available in MockK.
 
-For the sake of completeness, we can translate the above test using Mockito, so we can have the full picture of the differences between the two libraries. In details, we'll use the library `mockito-kotlin` on top on Mockito to have a more idiomatic look and feel:
+For completeness, we can translate the above test using Mockito to understand the differences between the two libraries. In detail, we'll use the library `mockito-kotlin` on top of Mockito to have a more idiomatic look and feel:
 
 ```kotlin
 @Test
@@ -450,11 +450,11 @@ fun `given a userId and an initial amount, when executed with error, then propag
 }
 ```
 
-As we can see, the only parte changed is the DSL offered by the mocking library. The rest of the test remains more or less the same.
+As we can see, the only part that has changed is the DSL offered by the mocking library. The rest of the test remains more or less the same.
 
 ## 4. Conclusions
 
-In this article, we saw how to test a function declared in a `Raise<E>` context. We introduced several approaches and used many libraries. We saw how to write a test using JUnit 5 and Kotest testing framework. We saw how to use the `assertj-arrow-core` library to test functions using the Raise DSL. Then we translated the same tests using the Kotest extension asserts for Arrow. Then, we focused on mocking. The first approach we approached is using fake objects. Despite a bit of initial programming, fake objects approach seems to be very natural and ergonomic. We also saw how to mock a function declared in a `Raise<E>` context using the MockK and Mockito libraries. Mocking feels less idiomatic and more complex due to the presence of the `Raise<E>`context, which neither libraries manage natively. As of today, what we still miss is MockK and Mockito's extensions to handle functions using the Raise DSL natively, which would make the mocking process more straightforward.
+In this article, we saw how to test a function declared in a `Raise<E>` context. We introduced several approaches and used many libraries. We saw how to write a test using JUnit 5 and the Kotest testing framework. We saw how to use the `assertj-arrow-core` library to test functions using the Raise DSL. Then, we translated the same tests using the Kotest extension asserts for Arrow. Then, we focused on mocking. The first approach we approached was using fake objects. Despite some initial programming, the fake objects approach is natural and ergonomic. We also saw how to mock a function declared in a `Raise<E>` context using the MockK and Mockito libraries. Mocking feels less idiomatic and more complex due to the `Raise<E>` context, which neither libraries manage natively. As of today, we still miss the need to include Mockito's extensions to handle functions using the Raise DSL natively, which would make the mocking process more straightforward.
 
 ## 5. Appendix A
 
