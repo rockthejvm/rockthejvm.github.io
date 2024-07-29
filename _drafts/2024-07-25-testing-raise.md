@@ -22,12 +22,13 @@ dependencies {
     implementation("io.arrow-kt:arrow-core:1.2.4")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
-    testImplementation(libs.junit.jupiter.engine) <<-- Understnd this
+    testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0-RC")
     testImplementation("org.assertj:assertj-core:3.26.3")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.0")
     testImplementation("io.kotest.extensions:kotest-assertions-arrow:1.4.0")
     testImplementation("io.kotest.extensions:kotest-assertions-arrow-fx-coroutines:1.4.0")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
 }
 ```
 
@@ -44,8 +45,6 @@ tasks.withType<KotlinCompile>().configureEach {
 ```
 
 Please, take care that way we can provide options to compiler is changed since the article we wrote on context receivers (see [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/) for further details).
-
-By the way, in the appendix you can find the full `build.gradle.kts` file.
 
 Once we set up the project, we need some useful use case to test since this article will focus on testing the Raise DSL. We'll take a common example. We want to create some _business logic_ to create a stocks' portfolio for a user. Initially, we want to create a empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
 
@@ -244,13 +243,13 @@ should("create a portfolio for a user (using fold)") {
 
 So, we briefly introduce how to test a function that can raise an error of type `E`. What if the function calls another function that can raise an error too? We should not depend on code that is outside the unit we're testing. At the end of the day, we focus on unit test. Let's see what're the available options.
 
-## Mocking the Raise DSL
+## 3. Mocking the Raise DSL
 
 When we're dealing with unit tests, and we depend on a component that is outside our unit under test, we have at least two choices: Fake objects and mocks. But, before going deep into the topic, let's prepare the playground. 
 
 Let's say that we have the constraint that we can't have more than one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use should retrieve the information through an interface we call _a port_. To keep it simple, a port is a way for our business logic (or application) to be driven by or to drive external system, without depending directly from them. Okay, too much theory for today. Let's jump into the code.
 
-First, we now have a way for our use case to fail: A portfolio for a user may already exists. So, we need to add a new error:
+First, we now have a way for our use case to fail: A portfolio for a user may already exist. So, we need to add a new error:
 
 ```kotlin
 sealed interface DomainError {
@@ -322,7 +321,7 @@ We start again from the definition of mocks given by Martin Fowler to introduce 
 
 For sake of simplicity, we'll call both test doubles as *mocks*. So, mocks are partial implementation of an interface, that we can program to respond to a given set of inputs (signals), and we can verify that they received the expected signals.
 
-There are a lot of libraries that can help us to create mocks. The most famous in the Java world is [Mockito](https://site.mockito.org/). However, it poorly integrates with Kotlin, and it's not idiomatic. We can use [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's very powerful and easy to use. Again, this article is not intended to be a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
+There are a lot of libraries that can help us to create mocks. The most famous in the Java world is [Mockito](https://site.mockito.org/). In the Kotlin ecosystem, its counterpart is called [MockK](https://mockk.io/) instead. MockK is a mocking library that is idiomatic to Kotlin. It's very powerful and easy to use. Again, this article is not intended to be a tutorial on how to use MockK. So, we'll focus solely on how to use it to mock a function defined with a `Raise<E>` context.
 
 Mocking a dependency is a three steps process. First, you need to retrieve from the library an empty mock of the dependency:
 
@@ -430,13 +429,34 @@ should("return a PortfolioAlreadyExists error for an existing user") {
 
 The above test verifies the behavior of the use case when there was an error during the execution of the port. As we said, we used the `answers` function which is the most generic available in MockK.
 
-For the sake of completeness, we can translate the above test using Mockito, so we can have the full picture of the differences between the two libraries:
+For the sake of completeness, we can translate the above test using Mockito, so we can have the full picture of the differences between the two libraries. In details, we'll use the library `mockito-kotlin` on top on Mockito to have a more idiomatic look and feel:
 
 ```kotlin
-
+@Test
+fun `given a userId and an initial amount, when executed with error, then propagates the error properly`() {
+    runTest {
+        val exception = RuntimeException("Ooops!")
+        val actualResult =
+            either {
+                val countUserPortfoliosPort =
+                    mock<CountUserPortfoliosPort> {
+                        onBlocking { countByUserId(UserId("bob")) } doAnswer { raise(GenericError(exception)) }
+                    }
+                val underTest = createPortfolioUseCase(countUserPortfoliosPort)
+                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
+        EitherAssert.assertThat(actualResult).containsOnLeft(GenericError(exception))
+    }
+}
 ```
 
-## XX. Appendix A
+As we can see, the only parte changed is the DSL offered by the mocking library. The rest of the test remains more or less the same.
+
+## 4. Conclusions
+
+In this article, we saw how to test a function declared in a `Raise<E>` context. We introduced several approaches and used many libraries. We saw how to write a test using JUnit 5 and Kotest testing framework. We saw how to use the `assertj-arrow-core` library to test functions using the Raise DSL. Then we translated the same tests using the Kotest extension asserts for Arrow. Then, we focused on mocking. The first approach we approached is using fake objects. Despite a bit of initial programming, fake objects approach seems to be very natural and ergonomic. We also saw how to mock a function declared in a `Raise<E>` context using the MockK and Mockito libraries. Mocking feels less idiomatic and more complex due to the presence of the `Raise<E>`context, which neither libraries manage natively. As of today, what we still miss is MockK and Mockito's extensions to handle functions using the Raise DSL natively, which would make the mocking process more straightforward.
+
+## 5. Appendix A
 
 As many of you might know, Kotlin _context receiver_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there will be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details). 
 
