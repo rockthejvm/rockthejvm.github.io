@@ -11,7 +11,7 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-At RockTheJvm, we know the power of the Kotlin Arrow library well. We also love the Raise DSL and its features. We already wrote about it (check out [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/)), but now it's time to understand how to test an application that uses the Raise DSL. To fully grasp the concepts we'll be discussing, it's important to have a tangible understanding of Kotlin, Arrow library, and the Raise DSL. We recommend checking out our previous posts or resources if you need to become more familiar with them. Fasten your seatbelt because we will dive into the testing world of Arrow Raise.
+At RockTheJvm, we know the power of the Kotlin Arrow library well. We also love the Raise DSL and its features. We already wrote about it (check out [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/)), but now it's time to understand how to test an application that uses the Raise DSL. To fully grasp the concepts we'll be discussing, it's essential to have a tangible understanding of Kotlin, Arrow library, and the Raise DSL. We recommend checking out our previous posts or resources if you need to become more familiar with them. Fasten your seatbelt because we will dive into the testing world of Arrow Raise.
 
 ## 1. Setting up the project
 
@@ -68,9 +68,9 @@ value class PortfolioId(val id: String)
 sealed interface DomainError
 ```
 
-Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. We can guess that it will persist in the newly created portfolio in some databases. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
+Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. It will likely persist in the newly created portfolio in some databases. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
 
-Now that we have set up the use case, we can start implementing it. Since we are diligent and well-behaved developers, we want to write some tests before implementing the use case, following the Test-Driven Development (TDD) approach.
+Now that we have set up, we can start implementing the use case. Since we are diligent and well-behaved developers, we want to write tests before implementing the use case, following the Test-Driven Development (TDD) approach.
 
 ## 2. Testing the use case
 
@@ -86,7 +86,7 @@ fun createPortfolioUseCase(): CreatePortfolioUseCase =
 
 As you might have noticed, the `createPortfolioUseCase` method is nothing more than a factory method.
 
-We'll use different testing frameworks. Let's begin with a setup that should be quite familiar to developers: Kotlin together with Spring: JUnit 5 as the test runtime and AssertJ for assertions.
+We'll use different testing frameworks. Let's begin with a setup that should be familiar to developers: Kotlin and Spring: JUnit 5 as the test runtime and AssertJ for assertions.
 
 ```kotlin
 internal class CreatePortfolioUseCaseJUnit5Test {
@@ -203,7 +203,7 @@ internal fun `given a userId and an initial amount, when executed, then it creat
 
 The test is less readable than the previous one because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it.
 
-We have used JUnit 5 until now. However, we can definitely switch to Kotest. Kotest is a powerful testing framework for Kotlin, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
+We have used JUnit 5 until now. However, we can definitely switch to Kotest. Kotest is a robust testing framework for Kotlin, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
 
 So, let's translate the above tests in Kotest notation.
 
@@ -225,7 +225,7 @@ internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
 })
 ```
 
-This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, which are declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
+This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are created lambda given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
 
 In this test, we used the approach of converting the `Raise<E>.() -> A` context into an `Either<E, A>`, and then we took advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
 
@@ -245,9 +245,9 @@ So, we briefly introduce how to test a function that can raise an error of type 
 
 ## 3. Mocking the Raise DSL
 
-When we're dealing with unit tests, and we depend on a component that is outside our unit under test, we have at least two choices: Fake objects and mocks. But, before going deep into the topic, let's prepare the playground. 
+When dealing with unit tests and depending on a component outside our unit under test, we have at least two choices: fake objects and mocks. But before going deep into the topic, let's prepare the playground.
 
-Let's say that we have the constraint that we can't have more than one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use should retrieve the information through an interface we call _a port_. To keep it simple, a port is a way for our business logic (or application) to be driven by or to drive external system, without depending directly from them. Okay, too much theory for today. Let's jump into the code.
+Let's say we can only have one portfolio per user. So, we need to check if the user already has a portfolio before creating a new one. If we want to use a hexagonal architecture pattern, the use case should retrieve the information through an interface we call _a port_. A port is a way for our business logic (or application) to be driven by or to drive external systems without depending directly on them. Okay, too much theory for today. Let's jump into the code.
 
 First, we now have a way for our use case to fail: A portfolio for a user may already exist. So, we need to add a new error:
 
@@ -257,7 +257,7 @@ sealed interface DomainError {
 }
 ```
 
-Then, we can define the new port interface. Given a `userId`, we can retrieve the number of portfolios the user has.
+Then, we can define the new port interface. Given a `userId`, we can retrieve the user's number of portfolios.
 
 ```kotlin
 interface CountUserPortfoliosPort {
@@ -266,7 +266,7 @@ interface CountUserPortfoliosPort {
 }
 ```
 
-Finally,. let's wire all the things together, starting using our port into the use case:
+Finally, let's wire all the things together, starting using our port into the use case:
 
 ```kotlin
 fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): CreatePortfolioUseCase =
@@ -281,13 +281,13 @@ fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): Create
     }
 ```
 
-We're passing the port directly as an input parameter of the factory function called `createPortfolioUseCase`.
+We're passing the port directly as an input parameter of the factory function `createPortfolioUseCase`.
 
-As you might expect, we need to change our tests too. We need to understand what to pass to the `createPortfolioUseCase` function when creating the instance of the use case under test. As we said, we have at least two choices. The first one is called fake objects. Martin Fowler defines a fake object as follows (see the articles [Test Double](https://martinfowler.com/bliki/TestDouble.html) for further details):
+As you might expect, we need to change our tests too. We need to understand what to pass to the `createPortfolioUseCase` function when creating the use case instance under test. As we said, we have at least two choices. The first one is called fake objects. Martin Fowler defines a fake object as follows (see the articles [Test Double](https://martinfowler.com/bliki/TestDouble.html) for further details):
 
-> Fake objects actually have working implementations, but usually take some shortcut which makes them not suitable for production.
+> Fake objects actually have working implementations, but they usually take some shortcut, which makes them unsuitable for production.
 
-In our case, we need to implement the port we defined in a way suitable for our test. For example, let's say we want to implement a test verifying the use case when the user already has a portfolio. We can implement the port as follows:
+In our case, we need to implement the port we defined correctly for our test. For example, we want to implement a test verifying the use case when the user already has a portfolio. We can implement the port as follows:
 
 ```kotlin
 private val fakeCountUserPortfolios: CountUserPortfoliosPort =
@@ -297,7 +297,7 @@ private val fakeCountUserPortfolios: CountUserPortfoliosPort =
     }
 ```
 
-So, if the given `userId` is anything than `bob`, the fake implementation returns that the user has a portfolio. Otherwise, it returns that the user has no portfolio. We can use the `fakeCountUserPortfolios` object to create the use case under test, and implement the test we need using Kotest:
+So, if the given `userId` is not `bob`, the fake implementation will show the user has a portfolio. Otherwise, it returns that the user has no portfolio. We can use the `fakeCountUserPortfolios` object to create the use case under test and implement the test we need using Kotest:
 
 ```kotlin
 should("raise a PortfolioAlreadyExists") {
