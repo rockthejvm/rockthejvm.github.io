@@ -227,7 +227,7 @@ internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
 })
 ```
 
-This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit5. Tests are lambdas with receiver given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
+This article is not a tutorial on how to use Kotest. However, we can notice that tests are not methods of the class, as in JUnit 5. Tests are lambdas with receiver given to the `ShouldSpec` class, one of the available contexts. If you extend the `ShouldSpec` class, you can access the `context` and `should` methods, declared functions in the `ShouldSpecRootScope`. The lambda you give to the `ShouldSpec` constructor is defined with the `ShouldSpecRootScope` context. As you might notice, we didn't use the `runTest` or `runBlocking` functions since the `should` method accepts a suspending function itself.
 
 In this test, we used the approach of converting the `Raise<E>.() -> A` context into an `() -> Either<E, A>`, and then we took advantage of the `shouldBeRight` assertions given by the `kotest-assertions-arrow` library.
 
@@ -394,7 +394,7 @@ should("create a portfolio for a user (using mockk and either") {
 }
 ```
 
-We left out only the case in which we want to mock a function that raises an error. As you can imagine, it's close to what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the `answers` generic function indeed.
+We left out only the case in which we want to mock the function raising an error. As you can imagine, it's close to what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the more generic `answers` function indeed.
 
 First, we need to add a new error to our errors hierarchy:
 
@@ -430,7 +430,7 @@ should("return a PortfolioAlreadyExists error for an existing user") {
 }
 ```
 
-The above test verifies the behavior of the use case when there was an error during the execution of the port. We used the `answers` function, the most generic one available in MockK.
+The above test verifies the behavior of the use case when there was an unexpected error during the execution of the port. We used the `answers` function, the most generic one available in MockK.
 
 For completeness, we can translate the above test using Mockito to understand the differences between the two libraries. In detail, we'll use the library `mockito-kotlin` on top of Mockito to have a more idiomatic look and feel:
 
@@ -443,7 +443,11 @@ fun `given a userId and an initial amount, when executed with error, then propag
             either {
                 val countUserPortfoliosPort =
                     mock<CountUserPortfoliosPort> {
-                        onBlocking { countByUserId(UserId("bob")) } doAnswer { raise(GenericError(exception)) }
+                        onBlocking { 
+                            countByUserId(UserId("bob")) 
+                        } doAnswer { 
+                            raise(GenericError(exception)) 
+                        }
                     }
                 val underTest = createPortfolioUseCase(countUserPortfoliosPort)
                 underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
@@ -457,13 +461,13 @@ As we can see, the only part that has changed is the DSL offered by the mocking 
 
 ## 4. Conclusions
 
-In this article, we saw how to test a function declared in a `Raise<E>` context. We introduced several approaches and used many libraries. We saw how to write a test using JUnit 5 and the Kotest testing framework. We saw how to use the `assertj-arrow-core` library to test functions using the Raise DSL. Then, we translated the same tests using the Kotest extension asserts for Arrow. Then, we focused on mocking. The first approach we approached was using fake objects. Despite some initial programming, the fake objects approach is natural and ergonomic. We also saw how to mock a function declared in a `Raise<E>` context using the MockK and Mockito libraries. Mocking feels less idiomatic and more complex due to the `Raise<E>` context, which neither libraries manage natively. As of today, we still miss the need to include Mockito's extensions to handle functions using the Raise DSL natively, which would make the mocking process more straightforward.
+In this article, we saw how to test a function declared in a `Raise<E>` context. We introduced several approaches and used many libraries. We saw how to write a test using JUnit 5 and the Kotest testing frameworks. We saw how to use the `assertj-arrow-core` library to test functions using the Raise DSL. Then, we translated the same tests using the Kotest extension asserts for Arrow. Then, we focused on mocking. The first solution we approached was using fake objects. Despite some initial programming, the fake objects are natural and ergonomic. We also saw how to mock a function declared in a `Raise<E>` context using the MockK and Mockito libraries. Mocking feels less idiomatic and more complex due to the `Raise<E>` context, which neither libraries manage natively. As of today, we still miss some Mockito's extensions functions to handle the Raise DSL natively, which would make the mocking process more straightforward.
 
-## 5. Appendix A
+## 5. Appendix
 
-As many of you might know, Kotlin _context receivers_ were deprecated in more recent versions of Kotlin, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there would be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details).
+As many of you might know, **Kotlin _context receivers_ were deprecated in more recent versions of Kotlin**, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there would be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details).
 
-Given the above information, it's perfectly right to say you want to use context receivers. Let's see how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
+Given the above information, it's perfectly fine to say you don't want to use context receivers. Let's see how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
 
 As we know, a single context receiver is equivalent to declaring it as a function receiver. So, the definition of our use case becomes as follows:
 
@@ -474,7 +478,8 @@ interface CreatePortfolioUseCaseWoContextReceivers {
 
 fun createPortfolioUseCaseWoContextReceivers(): CreatePortfolioUseCaseWoContextReceivers =
     object : CreatePortfolioUseCaseWoContextReceivers {
-        override suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
+        override suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = 
+            PortfolioId("1")
     }
 ```
 
@@ -498,4 +503,4 @@ internal class CreatePortfolioUseCaseWoContextReceiversJUnit5Test {
 }
 ```
 
-From here on, everything should run quite smoothly.
+From here on, everything should run quite smoothly. Happy coding!
