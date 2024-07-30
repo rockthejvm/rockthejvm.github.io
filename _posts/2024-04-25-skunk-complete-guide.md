@@ -2,7 +2,7 @@
 title: "The Skunk Scala Library for Database Interaction: A Comprehensive Guide"
 date: 2024-04-25
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [skunk]
 excerpt: "Learn how to use the Skunk library to interact with PostgreSQL database in a type-safe and non-blocking manner."
 ---
@@ -204,7 +204,7 @@ In Skunk, given instances such as `Temporal, Trace, Network, and Console` play e
 
   object main extends IOApp {
 
-    def singleSession(config: Config): IO[Unit] = 
+    def singleSession(config: Config): IO[Unit] =
       DbConnection.single[IO](config).use { session =>
         for {
           _           <- IO(println("Using a single session..."))
@@ -213,7 +213,7 @@ In Skunk, given instances such as `Temporal, Trace, Network, and Console` play e
         } yield ()
       }
 
-    def pooledSession(config: Config): IO[Unit] = 
+    def pooledSession(config: Config): IO[Unit] =
       DbConnection.pooled[IO](config).use { resource =>
         resource.use { session =>
           for {
@@ -232,7 +232,7 @@ In Skunk, given instances such as `Temporal, Trace, Network, and Console` play e
         case Right(configValues) =>
           singleSession(configValues) *> pooledSession(configValues) *> IO.pure(ExitCode.Success)
       }
-    }   
+    }
   }
   ```
   We first load configuration values from `application.conf`. If values are properly set up, we pass the config values to both methods `singleSession` and `pooledSession` to establish our database connections with the help of `DbConnection` object we previously created and run both connections in a sequence. Otherwise, we print errors to the console to better understand what went wrong. We now test our database connections by fetching the current date and time of our system, and if our connections was succesfully established, we should have an output similar to the following.

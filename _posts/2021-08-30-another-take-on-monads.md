@@ -2,7 +2,7 @@
 title: "Another Take at Monads: A Way to Generalize Chained Computations"
 date: 2021-08-30
 header:
-    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+    image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [fp]
 excerpt: "We've talked about monads quite a lot on Rock the JVM. In this article, we'll approach them from yet another angle."
 ---

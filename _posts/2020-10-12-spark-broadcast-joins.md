@@ -2,7 +2,7 @@
 title: "Broadcast Joins in Apache Spark: an Optimization Technique"
 date: 2020-10-12
 header:
-  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
+  image: "https://res.cloudinary.com/dkoypjlgr/image/upload/c_auto,g_auto,h_300,w_1200/f_auto/q_auto:eco/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [spark, optimization]
 excerpt: "Broadcast joins in Apache Spark are one of the most bang-for-the-buck techniques for optimizing speed and avoiding memory issues. Let's take a look."
 ---
