@@ -480,7 +480,7 @@ In this article, we saw how to test a function declared in a `Raise<E>` context.
 
 ## 5. Appendix
 
-As we said, Kotlin context receivers were deprecated in more recent versions of Kotlin. For the above reason, we preferred to use something other than context receivers in this article. However, it's not debatable whether the syntax of context receivers is cleaner and more concise than those that don't use it. We introduced it in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/). Let's see how our example changes if we use context receivers.
+As we said, Kotlin context receivers were deprecated in more recent versions of Kotlin. For the above reason, we preferred to use something other than context receivers in this article. However, it's not debatable whether the syntax of context receivers is clean and concise. We introduced it in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/). Let's see how our example changes if we use context receivers.
 
 We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
 
@@ -510,7 +510,7 @@ fun createPortfolioUseCase(): CreatePortfolioUseCase =
     }
 ```
 
-Easy-peasy. Now, we need to change the code to use the new version of the use case. Finally, we can call the `createPortfolio` function directly on the `CreatePortfolioUseCase` type. Here is how the JUnit 5 test changes:
+Easy-peasy. Now, we need to change the code to use the new version of the use case. Now, we can call the `createPortfolio` function directly on the `CreatePortfolioUseCase` type. Here is how the JUnit 5 test changes:
 
 ```kotlin
 internal class CreatePortfolioUseCaseJUnit5Test {
