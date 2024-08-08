@@ -55,9 +55,9 @@ value class PortfolioId(val id: String)
 sealed interface DomainError
 ```
 
-Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. We can start from the name. The function create a portfolio. Probably, it would persist it in some database. If so, we should have used the `suspend` modifier for the function. However, having a suspended function would have added a lot of complexity not related to Arrow to our code. So, we will not use suspended function. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared using the type `Raise<DomainError>` as receiver.
+Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. We can start from the name. The function creates a portfolio. It would persist in some databases. If so, we should have used the `suspend` modifier for the function. However, having a suspended function would have added much complexity unrelated to Arrow to our code. So, we will not use a suspended function. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared using the type `Raise<DomainError>` as a receiver.
 
-In this article we'll have a different approach than the one in the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/. In fact, context receivers where deprecated in the meantime  and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). So, for now, it's better using simple receivers and waiting for context parameters to be released in the near future.
+In this article, we'll take a different approach than the one in the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/). In fact, context receivers have been deprecated in the meantime, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). So, it's better to use simple receivers and wait for context parameters to be released soon.
 
 We can start implementing the use case now that we have set up. Since we are diligent and well-behaved developers, **we want to write tests before implementing the use case**, following the Test-Driven Development (TDD) approach.
 
@@ -480,7 +480,7 @@ In this article, we saw how to test a function declared in a `Raise<E>` context.
 
 ## 5. Appendix
 
-As we said, Kotlin _context receivers_ were deprecated in more recent versions of Kotlin. We preferred not to use context receivers in this article for the above reason. However, it's not debatable that context receivers syntax is cleaner and more succinct than the one that doesn't use it. We already introduced it in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/). Let's see how our example changes if we use context receivers.
+As we said, Kotlin context receivers were deprecated in more recent versions of Kotlin. For the above reason, we preferred to use something other than context receivers in this article. However, it's not debatable whether the syntax of context receivers is cleaner and more concise than those that don't use it. We introduced it in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/). Let's see how our example changes if we use context receivers.
 
 We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
 
@@ -527,5 +527,5 @@ internal class CreatePortfolioUseCaseJUnit5Test {
 }
 ```
 
-No more `with`, no more scope function! 
+No more call to `with`, no more scope function! 
 From here on, everything should run quite smoothly. Happy coding!
