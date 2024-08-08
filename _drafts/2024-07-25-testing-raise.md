@@ -11,7 +11,7 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-At RockTheJvm, we deeply understand the power of the Kotlin Arrow library and the Raise DSL, and we've previously shared our insights in our article on [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/). Now, we're ready to delve into the crucial topic of testing applications that use the Raise DSL. To fully grasp the concepts we'll be discussing, it's essential to have a solid understanding of Kotlin, Arrow library, and the Raise DSL. We recommend revisiting our previous posts or resources if you need to refresh your knowledge. Get ready to explore the testing world of Arrow Raise with confidence and understanding.
+At Rock the Jvm, we deeply understand the power of the Kotlin Arrow library and the Raise DSL, and we've previously shared our insights in our article on [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/). Now, we're ready to introduce the crucial topic of testing applications that use the Raise DSL. To fully grasp the concepts we'll be discussing, it's essential to have a solid understanding of Kotlin, Arrow library, and the Raise DSL. We recommend revisiting our previous posts or resources if you need to refresh your knowledge. Get ready to explore the testing world of Arrow Raise with confidence and understanding.
 
 ## 1. Setting up the project
 
@@ -34,24 +34,11 @@ dependencies {
 
 Notice that we're using version `1.9.0-RC` of the coroutines library since we need support for the Kotlin compiler's version 2.0.0.
 
-We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
-
-```kotlin
-tasks.withType<KotlinCompile>().configureEach {
-    compilerOptions {
-        freeCompilerArgs.add("-Xcontext-receivers")
-    }
-}
-```
-
-Please take care that the way we can provide options to the compiler has changed since the article we wrote on context receivers (see [Kotlin Context Receivers: A Comprehensive Guide ](https://blog.rockthejvm.com/kotlin-context-receivers/) for further details).
-
 Once we set up the project, we need some helpful use cases to test since this article will focus on testing the Raise DSL. We'll take a typical example. We want to create some _business logic_ to create a stock portfolio for a user. Initially, we want to make an empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
 
 ```kotlin
 interface CreatePortfolioUseCase {
-    context (Raise<DomainError>)
-    suspend fun createPortfolio(model: CreatePortfolio): PortfolioId
+    fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId
 }
 
 data class CreatePortfolio(
@@ -68,7 +55,9 @@ value class PortfolioId(val id: String)
 sealed interface DomainError
 ```
 
-Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. First, we have a `suspend` function, which tells us that the function will perform some effectful operation. It will likely persist the newly created portfolio in some databases. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared in the context of `Raise<DomainError>` (again, check out the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/) for further details).
+Let's analyze the above code briefly since the function's signature tells us a lot of helpful information. We can start from the name. The function create a portfolio. Probably, it would persist it in some database. If so, we should have used the `suspend` modifier for the function. However, having a suspended function would have added a lot of complexity not related to Arrow to our code. So, we will not use suspended function. Once the new portfolio is created, the function returns its identifier, representing the happy path. Finally, the function can raise a `DomainError` in case of failure since it's declared using the type `Raise<DomainError>` as receiver.
+
+In this article we'll have a different approach than the one in the article [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/. In fact, context receivers where deprecated in the meantime  and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). So, for now, it's better using simple receivers and waiting for context parameters to be released in the near future.
 
 We can start implementing the use case now that we have set up. Since we are diligent and well-behaved developers, **we want to write tests before implementing the use case**, following the Test-Driven Development (TDD) approach.
 
@@ -79,8 +68,7 @@ First, we want to test the happy path, meaning the use case creates a new portfo
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
-        context (Raise<DomainError>)
-        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId = TODO()
+        override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = TODO()
     }
 ```
 
@@ -95,23 +83,24 @@ internal class CreatePortfolioUseCaseJUnit5Test {
 
     @Test
     internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() = 
-        runTest { 
-            TODO("Not yet implemented") 
-        }
+        TODO("Not yet implemented")
 }
 ```
 
-For convention, we call the unit we want to test `underTest`. Moreover, we used a typical given-when-then structure for the test's name. Furthermore, we must wrap the whole test inside a `runTest` call that gives us the coroutine context required to run a suspending function.
+For convention, we call the unit we want to test `underTest`. Moreover, we used a typical given-when-then structure for the test's name. 
 
-Now, we have to test that, given some inputs, the function will return the expected output. However, here we have a complication. The function is declared in the `Raise<DomainError>` context, which means that the code that calls it should be able to handle a possible error of type `DomainError`. The below implementation will not even compile:
+Now, we have to test that, given some inputs, the function will return the expected output. However, here we have a complication. The function is declared in the `Raise<DomainError>` context, which means that the code that calls it should be able to handle a possible error of type `DomainError`. Moreover, we need to use some scope function to create a scope with an instance of the `CreatePortfolioUseCase` type. Usually, we use the `with` scope function for this purpose.
+
+However, the below implementation will not even compile:
 
 ```kotlin
 @Test
-internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() = 
-    runTest { 
-        val actualResult: PortfolioId = 
-            underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) 
-    }
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
+    val actualResult: PortfolioId = 
+        with(underTest) { 
+            createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) 
+        }
+}
 ```
 
 The compiler gives us the following error:
@@ -125,7 +114,9 @@ Nothing more true. Unfortunately, we can't build our instance of the `Raise<E>` 
 ```kotlin
 val actualResult: Either<DomainError, PortfolioId> =
     either {
-        underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+        with(underTest) {
+            createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+        }
     }
 ```
 
@@ -133,28 +124,30 @@ Now that we have a manageable function, we can add the assertion to our test, wh
 
 ```kotlin
 @Test
-internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() =
-    runTest {
-        val actualResult: Either<DomainError, PortfolioId> =
-            either {
-                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            with(underTest) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
             }
-        Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
-    }
+        }
+    Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
+}
 ```
 
 The `assertThat` function is a static method of the `org.assertj.core.api.Assertions`, and we take advantage of the `getOrNull` method of the `Either` type to get the value of the `Right` side of the `Either` type. The AssertJ library has no built-in support for Arrow types. However, we can use the assertions imported by the `assertj-arrow-core` library (if you're asking, the library's author is me). **The library has a lot of fluent assertions tailored to the Arrow library**. For example, we can use the assertions on the `Either<E, A>` type directly, changing the above test as follows:
 
 ```kotlin
 @Test
-internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using AssertJ-Arrow-Core)`() =
-    runTest {
-        val actualResult: Either<DomainError, PortfolioId> =
-            either {
-                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using AssertJ-Arrow-Core)`() {
+    val actualResult: Either<DomainError, PortfolioId> =
+        either {
+            with(underTest) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
             }
-        EitherAssert.assertThat(actualResult).containsOnRight(PortfolioId("1"))
-    }
+        }
+    EitherAssert.assertThat(actualResult).containsOnRight(PortfolioId("1"))
+}
 ```
 
 As we can see, we don't need to extract the value from the `Either<E, A>` anymore.
@@ -164,8 +157,7 @@ Now, we can implement the function `createPortfolio` to make the test pass. Let'
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
-        context(Raise<DomainError>)
-        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
+        override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
     }
 ```
 
@@ -175,25 +167,28 @@ Instead of transforming the `Raise<E>.() -> A` function in a `() -> Either<E, A>
 
 ```kotlin
 @Test
-internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using fold)`() =
-    runTest {
-        fold(
-            block = { underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) },
-            recover = { Assertions.fail("The use case should not fail") },
-            transform = { Assertions.assertThat(it).isEqualTo(PortfolioId("1")) },
-        )
-    }
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using fold)`() {
+    fold(
+        block = {
+            with(underTest) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            },
+        },
+        recover = { Assertions.fail("The use case should not fail") },
+        transform = { Assertions.assertThat(it).isEqualTo(PortfolioId("1")) },
+    )
+}
 ```
 
 However, the above code is cumbersome and less readable than the previous one. Moreover, we must apply a `fold` function whenever we want to test a function declared in a `Raise<E>` context. Fortunately, the `assertj-arrow-core` does it for us, defining some handful of assertions that use the `fold` function under the hood:
 
 ```kotlin
 @Test
-internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using RaiseAssert)`() =
+internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using RaiseAssert)`() {
     RaiseAssert
         .assertThat {
-            runBlocking {
-                underTest.createPortfolio(
+            with(underTest) {
+                createPortfolio(
                     CreatePortfolio(
                         UserId("bob"),
                         Money(1000.0),
@@ -201,6 +196,7 @@ internal fun `given a userId and an initial amount, when executed, then it creat
                 )
             }
         }.succeedsWith(PortfolioId("1"))
+}
 ```
 
 The test is less readable than the one with the `either` builder because the library doesn't support suspending functions (at least for now). However, the `RaiseAssert` class is a powerful tool to test functions declared in a `Raise<E>` context. As we said, the `succeedWith` uses the `fold` function under the hood, so we don't need to worry about it.
@@ -218,9 +214,10 @@ internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
         should("create a portfolio for a user") {
             val actualResult: Either<DomainError, PortfolioId> =
                 either {
-                    underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+                    with(underTest) {
+                        createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+                    }
                 }
-
             actualResult.shouldBeRight(PortfolioId("1"))
         }
     }
@@ -236,7 +233,11 @@ Unfortunately, Kotest has no extension to test a `Raise<E>.() -> A` function dir
 ```kotlin
 should("create a portfolio for a user (using fold)") {
     fold(
-        block = { underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) },
+        block = { 
+            with(underTest) { 
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0))) 
+            },
+        },
         recover = { fail("The use case should not fail") },
         transform = { it.shouldBe(PortfolioId("1")) },
     )
@@ -263,8 +264,7 @@ Then, we can define the new port interface. Given a `userId`, we can count the u
 
 ```kotlin
 interface CountUserPortfoliosPort {
-    context(Raise<DomainError>)
-    suspend fun countByUserId(userId: UserId): Int
+    fun Raise<DomainError>.countByUserId(userId: UserId): Int
 }
 ```
 
@@ -273,8 +273,7 @@ Finally, let's wire all the things together, starting using our port into the us
 ```kotlin
 fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
-        context(Raise<DomainError>)
-        override suspend fun createPortfolio(model: CreatePortfolio): PortfolioId {
+        override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId {
             ensure(countUserPortfolios.countByUserId(model.userId) == 0) {
                 raise(DomainError.PortfolioAlreadyExists(model.userId))
             }
@@ -294,8 +293,7 @@ In our case, we need to implement the port for our test. For example, we want to
 ```kotlin
 private val fakeCountUserPortfolios: CountUserPortfoliosPort =
     object : CountUserPortfoliosPort {
-        context(Raise<DomainError>)
-        override suspend fun countByUserId(userId: UserId): Int = 
+        override fun Raise<DomainError>.countByUserId(userId: UserId): Int = 
             if (userId == UserId("bob")) 0 else 1
     }
 ```
@@ -307,7 +305,9 @@ should("raise a PortfolioAlreadyExists") {
     val alice = UserId("alice")
     val actualResult: Either<DomainError, PortfolioId> =
         either {
-            underTest.createPortfolio(CreatePortfolio(alice, Money(1000.0)))
+            with(underTest) {
+                createPortfolio(CreatePortfolio(alice, Money(1000.0)))
+            }
         }
     actualResult.shouldBeLeft(PortfolioAlreadyExists(alice))
 }
@@ -335,12 +335,14 @@ val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
 The `mockk()` factory function provides a proxy to the port we can use to instrument our needs. The second step is the instrumentation of the mock indeed. Based on what the tutorials said on the net, we should instrument the `countUserPortfoliosMock` in the following way:
 
 ```kotlin
-coEvery { 
-    countUserPortfoliosMock.countByUserId(UserId("bob"))
+every {
+    with(countUserPortfoliosMock) {
+        countUserPortfoliosMock.countByUserId(UserId("bob"))
+    }
 } returns 0
 ```
 
-The above code translates to the following sentence: "Every time we call the method `countByUserId` of the instance `countUserPortfoliosMock` with input equals to `UserId("bob")`, we'll get the value `0` as a result." Note that we are using the `coEvery` function of MockK since we declared the `countByUserId` function to be a suspending function. Despite that, we get an error if we try to compile it:
+The above code translates to the following sentence: "Every time we call the method `countByUserId` of the instance `countUserPortfoliosMock` with input equals to `UserId("bob")`, we'll get the value `0` as a result.". Despite that, we get an error if we try to compile it:
 
 ```
 No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
@@ -351,9 +353,11 @@ The compiler tells the truth. We defined the `countByUserId` function using the 
 We need to add the missing parameter with a matcher, as with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
 
 ```kotlin
-coEvery {
+every {
     with(any<Raise<DomainError>>()) {
-        countUserPortfoliosMock.countByUserId(UserId("bob"))
+        with(countUserPortfoliosMock) {
+            countByUserId(UserId("bob"))
+        }
     }
 } returns 0
 ```
@@ -364,14 +368,18 @@ Now, the compiler is happier, and we can proceed with the rest of the test code:
 should("create a portfolio for a user (using mockk") {
     val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
     val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
-    coEvery {
+    every {
         with(any<Raise<DomainError>>()) {
-            countUserPortfoliosMock.countByUserId(UserId("bob"))
+            with(countUserPortfoliosMock) {
+                countByUserId(UserId("bob"))
+            }
         }
     } returns 0
     val actualResult: Either<DomainError, PortfolioId> =
         either {
-            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            with(underTestWithMock) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
         }
     actualResult.shouldBeRight(PortfolioId("1"))
 }
@@ -385,10 +393,14 @@ should("create a portfolio for a user (using mockk and either") {
     val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
     val actualResult: Either<DomainError, PortfolioId> =
         either {
-            coEvery {
-                countUserPortfoliosMock.countByUserId(UserId("bob"))
+            every {
+                with(countUserPortfoliosMock) {
+                    countByUserId(UserId("bob"))
+                }
             } returns 0
-            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            with(underTestWithMock) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
         }
     actualResult.shouldBeRight(PortfolioId("1"))
 }
@@ -396,7 +408,7 @@ should("create a portfolio for a user (using mockk and either") {
 
 We left out only the case in which we want to mock the function raising an error. As you can imagine, it's close to what we've just done. The main difference is that we cannot use the `returns` function on the MockK scope. We don't want to throw an exception. So, the `throws` function is not suitable too. We need to use the more generic `answers` function indeed.
 
-First, we need to add a new error to our errors hierarchy:
+First, we need to add a new error to our errors' hierarchy:
 
 ```kotlin
 sealed interface DomainError {
@@ -419,12 +431,16 @@ should("return a PortfolioAlreadyExists error for an existing user") {
     val exception = RuntimeException("Ooops!")
     val actualResult: Either<DomainError, PortfolioId> =
         either {
-            coEvery {
-                countUserPortfoliosMock.countByUserId(UserId("bob"))
+            every {
+                with(countUserPortfoliosMock) {
+                    countByUserId(UserId("bob"))
+                }
             } answers {
                 raise(GenericError(exception))
             }
-            underTestWithMock.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            with(underTestWithMock) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
         }
     actualResult.shouldBeLeft(GenericError(exception))
 }
@@ -437,23 +453,22 @@ For completeness, we can translate the above test using Mockito to understand th
 ```kotlin
 @Test
 fun `given a userId and an initial amount, when executed with error, then propagates the error properly`() {
-    runTest {
-        val exception = RuntimeException("Ooops!")
-        val actualResult =
-            either {
-                val countUserPortfoliosPort =
-                    mock<CountUserPortfoliosPort> {
-                        onBlocking { 
-                            countByUserId(UserId("bob")) 
-                        } doAnswer { 
-                            raise(GenericError(exception)) 
-                        }
+    val exception = RuntimeException("Ooops!")
+    val actualResult =
+        either {
+            val countUserPortfoliosPort =
+                mock<CountUserPortfoliosPort> {
+                    on { 
+                        countByUserId(UserId("bob")) 
+                    } doAnswer { 
+                        raise(GenericError(exception)) 
                     }
-                val underTest = createPortfolioUseCase(countUserPortfoliosPort)
-                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+                }
+            with(createPortfolioUseCase(countUserPortfoliosPort)) {
+                createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
             }
-        EitherAssert.assertThat(actualResult).containsOnLeft(GenericError(exception))
-    }
+        }
+    EitherAssert.assertThat(actualResult).containsOnLeft(GenericError(exception))
 }
 ```
 
@@ -465,42 +480,52 @@ In this article, we saw how to test a function declared in a `Raise<E>` context.
 
 ## 5. Appendix
 
-As many of you might know, **Kotlin _context receivers_ were deprecated in more recent versions of Kotlin**, and they are eligible to be deleted in future versions in favor of [context parameters](https://github.com/Kotlin/KEEP/issues/367). It was also assured by Kotlin staff that there would be no gap between the two (see [this YouTrack issue](https://youtrack.jetbrains.com/issue/KT-8087/Make-it-possible-to-suppress-warnings-globally-in-compiler-via-command-line-option#focus=Comments-27-10137847.0-0) for further details).
+As we said, Kotlin _context receivers_ were deprecated in more recent versions of Kotlin. We preferred not to use context receivers in this article for the above reason. However, it's not debatable that context receivers syntax is cleaner and more succinct than the one that doesn't use it. We already introduced it in the article [Kotlin Context Receivers: A Comprehensive Guide](https://blog.rockthejvm.com/kotlin-context-receivers/). Let's see how our example changes if we use context receivers.
 
-Given the above information, it's perfectly fine to say you don't want to use context receivers. Let's see how we can rewrite the use case and the test to continue using the Raise DSL without context receivers.
-
-As we know, a single context receiver is equivalent to declaring it as a function receiver. So, the definition of our use case becomes as follows:
+We need to enable the usage of context receivers since they're still an experimental feature in Kotlin 2.0.0. We need to add the following code to the `build.gradle.kts` file to do so:
 
 ```kotlin
-interface CreatePortfolioUseCaseWoContextReceivers {
-    suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId
+tasks.withType<KotlinCompile>().configureEach {
+    compilerOptions {
+        freeCompilerArgs.add("-Xcontext-receivers")
+    }
+}
+```
+
+Please take care that the way we can provide options to the compiler has changed since the previous article we wrote on context receivers.
+
+First of all, we need to change the `CreatePortfolioUseCase` interface to use context receivers:
+
+```kotlin
+interface CreatePortfolioUseCase {
+    context(Raise<DomainError>)
+    fun createPortfolio(model: CreatePortfolio): PortfolioId
 }
 
-fun createPortfolioUseCaseWoContextReceivers(): CreatePortfolioUseCaseWoContextReceivers =
-    object : CreatePortfolioUseCaseWoContextReceivers {
-        override suspend fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = 
+fun createPortfolioUseCase(): CreatePortfolioUseCase =
+    object : CreatePortfolioUseCase {
+        context(Raise<DomainError>)
+        override fun createPortfolio(model: CreatePortfolio): PortfolioId = 
             PortfolioId("1")
     }
 ```
 
-Easy-peasy. Now, we need to change the code to use the new version of the use case. We can't call the `createPortfolio` function directly on the `CreatePortfolioUseCaseWoContextReceivers` type, which now becomes a receiver. We need to use some scope function to create a scope with an instance of the `CreatePortfolioUseCaseWoContextReceivers` type. Usually, we use the `with` scope function for this purpose. Here is how the JUnit 5 test changes:
+Easy-peasy. Now, we need to change the code to use the new version of the use case. Finally, we can call the `createPortfolio` function directly on the `CreatePortfolioUseCase` type. Here is how the JUnit 5 test changes:
 
 ```kotlin
-internal class CreatePortfolioUseCaseWoContextReceiversJUnit5Test {
-    private val underTest = createPortfolioUseCaseWoContextReceivers()
+internal class CreatePortfolioUseCaseJUnit5Test {
+    private val underTest = createPortfolioUseCase()
 
     @Test
-    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() =
-        runTest {
-            val actualResult: Either<DomainError, PortfolioId> =
-                with(underTest) {
-                    either {
-                         createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
-                    }
-                }
-            Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
-        }
+    internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
+        val actualResult: Either<DomainError, PortfolioId> =
+            either {
+                underTest.createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
+            }
+        Assertions.assertThat(actualResult.getOrNull()).isEqualTo(PortfolioId("1"))
+    }
 }
 ```
 
+No more `with`, no more scope function! 
 From here on, everything should run quite smoothly. Happy coding!
