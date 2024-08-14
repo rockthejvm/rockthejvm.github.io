@@ -186,7 +186,7 @@ Also, with SBT it is easy to [generate some static files](https://github.com/che
 
 
 
-Botton up, we will see how ZIO, Laminar and Tapir can be combined to build a full stack webapp.
+Let's see how ZIO, Laminar and Tapir can be combined to build a full stack webapp.
 
 # 5. Server side
 
@@ -259,13 +259,13 @@ To be runnable those dependencies need to be satisfied **(5)**, this is what lay
 
 
 
-Let see how ZIO is used in the application. Layer per layer to build the application.
+Let see how ZIO, Layer per layer assembles the application.
 
 ### 5.1.1. Repository data layer
 
-Repositories are the layer that abstract the database access, and are the first layer of the application.
+Repository, the layer that abstract the database access, is the first layer of the application.
 
-In this project, classic Repository pattern is used to abstract the database access.
+In this project, classic Repository object connects the database through classical JDBC DataSource.
 
 
 ```scala
@@ -285,14 +285,14 @@ object Repository {
 ```
 
 * **(1)** Quill layer, that will provide a Quill Postgres service, with a SnakeCase naming strategy for the table mapping.
-> URLayer is a type alias for a ZLayer that does require a dependency and cannot fail:
+> **URLayer** is a type alias for a ZLayer that does require a dependency and cannot fail:
 >
->  type URLayer[-R, +A] = ZLayer[R, Nothing, A]
+>  type **URLayer**[-R, +A] = ZLayer[R, **Nothing**, A]
 
 * **(2)** DataSource layer, that will provide a DataSource service from the configuration.
 > TaskLayer is a type alias for a ZLayer that does not require a dependency and can fail with a Throwable:
 >
->  type TaskLayer[+A] = ZLayer[Any, Throwable, A]
+>  type **TaskLayer**[+A] = ZLayer[Any, **Throwable**, A]
 
 * **(3)** Data layer, that will provide a Quill Postgres service from the DataSource service.
 
@@ -305,7 +305,7 @@ User Repository is a classic repository that will handle the User entity.
 
 
 ```scala
-trait UserRepository: // (1)
+trait UserRepository:                            // (1)
   def create(user: User): Task[User]
   def getById(id: Long): Task[Option[User]]
  
@@ -314,7 +314,7 @@ class UserRepositoryLive private (quill: Quill.Postgres[SnakeCase]) extends User
 
   import quill.*
 
-  inline given SchemaMeta[User] = schemaMeta[User]("users")  // (3)
+  inline given SchemaMeta[User] = schemaMeta[User]("users")     // (3)
   inline given InsertMeta[User] = insertMeta[User](_.id)
   inline given UpdateMeta[User] = updateMeta[User](_.id, _.creationDate)
 
@@ -379,7 +379,7 @@ object FlywayServiceLive {
 Person service is a layer that will handle the business logic of the application.
 
 ```scala
-trait PersonService { // Service trait
+trait PersonService {             // Service trait
   def register(person: Person): Task[User]
 }
                                   // Dependency injection
@@ -696,14 +696,14 @@ package com.example.ziolaminardemo.app.demos.scalariform
 
 object ScalariformDemoPage:
   def apply() =
-    val personVar = Var(Person("Alice", 42, Left(Cat("Fluffy")))) // (1)
-    val userBus   = EventBus[User]() // (2)
+    val personVar = Var(Person("Alice", 42, Left(Cat("Fluffy"))))         // (1)
+    val userBus   = EventBus[User]()                                      // (2)
 
     div(
       styleAttr := "width: 100%; overflow: hidden;",
       div(
         styleAttr := "width: 600px; float: left;",
-        Form.renderVar(personVar)  // (3)
+        Form.renderVar(personVar)                                         // (3)
       ),
       div(
         styleAttr := "width: 100px; float: left; margin-top: 200px;",
@@ -712,7 +712,7 @@ object ScalariformDemoPage:
           onClick --> { _ =>
             // scalafmt:off
 
-            PersonEndpoint  // (4)
+            PersonEndpoint                                                // (4)
               .createEndpoint(personVar.now())
               .emitTo(userBus) 
 
@@ -724,9 +724,9 @@ object ScalariformDemoPage:
       div(
         styleAttr := "width: 600px; float: left;",
         h1("Databinding"),
-        child.text <-- personVar.signal.map(p => s"$p"), // (5)
+        child.text <-- personVar.signal.map(p => s"$p"),                  // (5)
         h1("Response"),
-        child <-- userBus.events.map(renderUser) // (6)
+        child <-- userBus.events.map(renderUser)                          // (6)
       )
     )
 
