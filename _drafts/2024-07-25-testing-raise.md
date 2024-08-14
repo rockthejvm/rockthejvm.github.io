@@ -20,19 +20,14 @@ First things first, let's set up a Kotlin project. We can use Gradle or Maven, b
 ```kotlin
 dependencies {
     implementation("io.arrow-kt:arrow-core:1.2.4")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0-RC")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.0")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0-RC")
     testImplementation("org.assertj:assertj-core:3.26.3")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.0")
     testImplementation("io.kotest.extensions:kotest-assertions-arrow:1.4.0")
-    testImplementation("io.kotest.extensions:kotest-assertions-arrow-fx-coroutines:1.4.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
 }
 ```
-
-Notice that we're using version `1.9.0-RC` of the coroutines library since we need support for the Kotlin compiler's version 2.0.0.
 
 Once we set up the project, we need some helpful use cases to test since this article will focus on testing the Raise DSL. We'll take a typical example. We want to create some _business logic_ to create a stock portfolio for a user. Initially, we want to make an empty portfolio for the user, adding some initial amount of money. We can model the use case as follows:
 
