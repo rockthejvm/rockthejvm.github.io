@@ -1,6 +1,6 @@
 ---
-title: "Raise Your Tests: Testing Arrow Raise"
-date: 2024-04-10
+title: "Raise Your Tests: Testing Functional Kotlin with Arrow and Raise"
+date: 2024-08-23
 header:
     image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [kotlin, arrow]
