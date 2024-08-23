@@ -4,7 +4,7 @@ date: 2024-08-23
 header:
     image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [kotlin, arrow]
-excerpt: ""
+excerpt: "A wide-randing guide to testing your functional Kotlin code with Arrow and the Raise DSL."
 toc: true
 toc_label: "In this article"
 ---
