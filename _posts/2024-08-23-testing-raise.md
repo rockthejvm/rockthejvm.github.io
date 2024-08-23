@@ -11,7 +11,7 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
-At Rock the Jvm, we deeply understand the power of the Kotlin Arrow library and the Raise DSL, and we've previously shared our insights in our article on [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/). Now, we're ready to introduce the crucial topic of testing applications that use the Raise DSL. To fully grasp the concepts we'll be discussing, it's essential to have a solid understanding of Kotlin, Arrow library, and the Raise DSL. We recommend revisiting our previous posts or resources if you need to refresh your knowledge. Get ready to explore the testing world of Arrow Raise with confidence and understanding.
+At Rock the JVM, we deeply understand the power of the Kotlin Arrow library and the Raise DSL, and we've previously shared our insights in our article on [Functional Error Handling in Kotlin, Part 3: The Raise DSL](https://blog.rockthejvm.com/functional-error-handling-in-kotlin-part-3/). Now, we're ready to introduce the crucial topic of testing applications that use the Raise DSL. To fully grasp the concepts we'll be discussing, it's essential to have a solid understanding of Kotlin, Arrow library, and the Raise DSL. We recommend revisiting our previous posts or resources if you need to refresh your knowledge. Get ready to explore the testing world of Arrow Raise with confidence and understanding.
 
 ## 1. Setting up the project
 
