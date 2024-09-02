@@ -23,9 +23,11 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
+    testImplementation("in.rcard:assertj-arrow-core:1.1.0")
     testImplementation("io.kotest:kotest-runner-junit5:5.9.0")
     testImplementation("io.kotest.extensions:kotest-assertions-arrow:1.4.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.4.0")
+    testImplementation("io.mockk:mockk:1.13.12")
 }
 ```
 
@@ -40,6 +42,9 @@ data class CreatePortfolio(
     val userId: UserId,
     val amount: Money,
 )
+
+@JvmInline
+value class Money(val amount: Double)
 
 @JvmInline
 value class UserId(val id: String)
@@ -61,6 +66,8 @@ We can start implementing the use case now that we have set up. Since we are dil
 First, we want to test the happy path, meaning the use case creates a new portfolio for the user. We need to implement our use case interface with a concrete class, which we usually call a service:
 
 ```kotlin
+import arrow.core.raise.Raise
+
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
         override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = TODO()
@@ -72,8 +79,9 @@ As you might have noticed, the `createPortfolioUseCase` method is nothing more t
 We'll use different testing frameworks. Let's begin with a setup that should be familiar to developers addicted to Kotlin and Spring: **JUnit 5 as the test runtime and AssertJ for assertions**.
 
 ```kotlin
+import kotlin.test.Test
+
 internal class CreatePortfolioUseCaseJUnit5Test {
-    
     private val underTest = createPortfolioUseCase()
 
     @Test
@@ -89,6 +97,9 @@ Now, we have to test that, given some inputs, the function will return the expec
 However, the below implementation will not even compile:
 
 ```kotlin
+import arrow.core.Either
+import arrow.core.raise.either
+
 @Test
 internal fun `given a userId and an initial amount, when executed, then it create the portfolio`() {
     val actualResult: PortfolioId = 
@@ -152,7 +163,8 @@ Now, we can implement the function `createPortfolio` to make the test pass. Let'
 ```kotlin
 fun createPortfolioUseCase(): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
-        override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = PortfolioId("1")
+        override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId = 
+            PortfolioId("1")
     }
 ```
 
@@ -161,13 +173,15 @@ If we run our test, it should be green.
 Instead of transforming the `Raise<E>.() -> A` function in a `() -> Either<E, A>` function, **we can use the `fold` function provided by the Arrow library**:
 
 ```kotlin
+import org.assertj.core.api.Assertions
+
 @Test
 internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using fold)`() {
     fold(
         block = {
             with(underTest) {
                 createPortfolio(CreatePortfolio(UserId("bob"), Money(1000.0)))
-            },
+            }
         },
         recover = { Assertions.fail("The use case should not fail") },
         transform = { Assertions.assertThat(it).isEqualTo(PortfolioId("1")) },
@@ -178,6 +192,9 @@ internal fun `given a userId and an initial amount, when executed, then it creat
 However, the above code is cumbersome and less readable than the previous one. Moreover, we must apply a `fold` function whenever we want to test a function declared in a `Raise<E>` context. Fortunately, the `assertj-arrow-core` does it for us, defining some handful of assertions that use the `fold` function under the hood:
 
 ```kotlin
+import `in`.rcard.assertj.arrowcore.RaiseAssert
+
+
 @Test
 internal fun `given a userId and an initial amount, when executed, then it create the portfolio (using RaiseAssert)`() {
     RaiseAssert
@@ -198,11 +215,15 @@ The test is less readable than the one with the `either` builder because the lib
 
 We have used JUnit 5 until now. However, we can switch to Kotest. **Kotest is a robust testing framework for Kotlin**, which is very close to ScalaTest for the Scala language. Kotest also has a set of tailored assertions for some of the available types in the Arrow library (see the [documentation](https://kotest.io/docs/assertions/arrow.html) for further details).
 
-So, let's translate the above tests in Kotest notation.
+If you're writing code in IntelliJ IDEA, it might be worth installing the Kotest plugin to be able to run the tests directly in the IDE.
+
+So, let's translate the above tests in [Kotest](https://plugins.jetbrains.com/plugin/14080-kotest-plugin-intellij) notation.
 
 ```kotlin
-internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
+import io.kotest.core.spec.style.ShouldSpec
+import io.kotest.assertions.arrow.core.*
 
+internal class CreatePortfolioUseCaseKotestTest : ShouldSpec({
     val underTest = createPortfolioUseCase()
 
     context("The create portfolio use case") {
@@ -250,22 +271,22 @@ Let's say we only have one portfolio per user. So, we need to check if the user 
 First, we now have a way for our use case to fail: A portfolio for a user may already exist. So, we need to add a new error:
 
 ```kotlin
-sealed interface DomainError {
-    data class PortfolioAlreadyExists(val userId: UserId) : DomainError
-}
+data class PortfolioAlreadyExists(val userId: UserId) : DomainError
 ```
 
 Then, we can define the new port interface. Given a `userId`, we can count the user's portfolios.
 
 ```kotlin
 interface CountUserPortfoliosPort {
-    fun Raise<DomainError>.countByUserId(userId: UserId): Int
+    fun countByUserId(userId: UserId): Int
 }
 ```
 
 Finally, let's wire all the things together, starting using our port into the use case:
 
 ```kotlin
+import arrow.core.raise.*
+
 fun createPortfolioUseCase(countUserPortfolios: CountUserPortfoliosPort): CreatePortfolioUseCase =
     object : CreatePortfolioUseCase {
         override fun Raise<DomainError>.createPortfolio(model: CreatePortfolio): PortfolioId {
@@ -288,7 +309,7 @@ In our case, we need to implement the port for our test. For example, we want to
 ```kotlin
 private val fakeCountUserPortfolios: CountUserPortfoliosPort =
     object : CountUserPortfoliosPort {
-        override fun Raise<DomainError>.countByUserId(userId: UserId): Int = 
+        override fun countByUserId(userId: UserId): Int = 
             if (userId == UserId("bob")) 0 else 1
     }
 ```
@@ -324,52 +345,25 @@ There are a lot of libraries that can help us to create mocks. The most famous i
 **Mocking a dependency is a three-step process**. First, you need to retrieve from the library an empty mock of the dependency:
 
 ```kotlin
+import io.mockk.mockk
+
 val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
 ```
 
 The `mockk()` factory function provides a proxy to the port we can use to instrument our needs. The second step is the instrumentation of the mock indeed, and we should instrument the `countUserPortfoliosMock` in the following way:
 
 ```kotlin
-every {
-    with(countUserPortfoliosMock) {
-        countUserPortfoliosMock.countByUserId(UserId("bob"))
-    }
-} returns 0
+every { countUserPortfoliosMock.countByUserId(UserId("bob")) } returns 0
 ```
 
-The above code translates to the following sentence: "Every time we call the method `countByUserId` of the instance `countUserPortfoliosMock` with input equals to `UserId("bob")`, we'll get the value `0` as a result.". Despite that, we get an error if we try to compile it:
-
-```
-No context receiver for 'arrow.core.raise.Raise<in.rcard.arrow.raise.testing.DomainError>' found.
-```
-
-The compiler tells the truth. We defined the `countByUserId` function using the `Raise<DomainError>` context. We should remember that **declaring a context receiver is like adding an implicit input parameter to the list of explicitly declared input parameters**. So, the compiler tells us we're not giving enough parameters for the function to be mocked.
-
-We need to add the missing parameter with a matcher, as with any other input parameter. The only difference is that we need the `Raise<DomainError>` at the scope level. Then, we can use the `with` scope function once again:
-
-```kotlin
-every {
-    with(any<Raise<DomainError>>()) {
-        with(countUserPortfoliosMock) {
-            countByUserId(UserId("bob"))
-        }
-    }
-} returns 0
-```
-
-Now, the compiler is happier, and we can proceed with the rest of the test code:
+Then, we can proceed with the rest of the test code:
 
 ```kotlin
 should("create a portfolio for a user (using mockk") {
     val countUserPortfoliosMock: CountUserPortfoliosPort = mockk()
     val underTestWithMock = createPortfolioUseCase(countUserPortfoliosMock)
-    every {
-        with(any<Raise<DomainError>>()) {
-            with(countUserPortfoliosMock) {
-                countByUserId(UserId("bob"))
-            }
-        }
-    } returns 0
+    every { countUserPortfoliosMock.countByUserId(UserId("bob")) } returns 0
+
     val actualResult: Either<DomainError, PortfolioId> =
         either {
             with(underTestWithMock) {
@@ -446,6 +440,8 @@ The above test verifies the behavior of the use case when there was an unexpecte
 For completeness, we can translate the above test using Mockito to understand the differences between the two libraries. In detail, we'll use the library `mockito-kotlin` on top of Mockito to have a more idiomatic look and feel:
 
 ```kotlin
+import org.mockito.kotlin.*
+
 @Test
 fun `given a userId and an initial amount, when executed with error, then propagates the error properly`() {
     val exception = RuntimeException("Ooops!")
