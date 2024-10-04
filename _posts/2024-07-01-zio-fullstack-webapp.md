@@ -111,7 +111,7 @@ Generated build contains documentation on details. Please take a look and don't 
 
 For **ScalaJS**
 
-* "org.scala-js"  % "[sbt-scalajs](http://www.scala-js.org/doc/sbt-plugin.html)" % "1.16.0" 
+* "org.scala-js"  % "[sbt-scalajs](http://www.scala-js.org/doc/sbt-plugin.html)" % "1.17.0" 
 * "ch.epfl.scala" % "[sbt-scalajs-bundler](https://scalacenter.github.io/scalajs-bundler/index.html)" % "0.21.1" will bundle the app
 * "ch.epfl.scala" % "[sbt-web-scalajs-bundler](https://scalacenter.github.io/scalajs-bundler/getting-started.html#sbt-web)" % "0.21.1" will expose the bundle as classpath resource for sbt-web (websjar).
 
@@ -161,11 +161,11 @@ Where most of the work is achieved by `@scala-js/vite-plugin-scalajs` plugin, th
 * **(1)** needs to know where to find the sbt build and which project to use.
 * **(2)** needs to know the sbt project ID to get fast/fullLinkJS from.
 
-To work properly, the sbt project must be bundled as ESModule, if you are using the g8 template, this is [already the case](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L97).
+During development, the sbt project must be bundled as ESModule, if you are using the g8 template, this is [already the case](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L97).
 
 In this setup:
 
-* **fastLinkJS** runs in watch mode
+* **fastLinkJS** runs the Scala to JS process in watch mode.
 * **Vite** will serve the app in http://localhost:5173/ and reload the client automaticaly.
 
 
@@ -209,9 +209,7 @@ In VS code you can see the modules view:
   </tr>
 </table>
 
-
-Also, with SBT it is easy to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63) that are copied in the resources of some module. Here I use [sbt-twirl](https://github.com/playframework/twirl) to generate the index.html of the server (bff) module.
-
+Sometime we need to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63), like the index.html of the server module, this is done with SBT only when the server module is build.
 
 
 Let's see how ZIO, Laminar and Tapir can be combined to build a full stack webapp.
@@ -230,11 +228,11 @@ We will see how ZIO will combine:
 
 A library for asynchronous and concurrent programming in Scala.
 
-At the type level **ZIO** is a data type that represents an effectful program that:
+**ZIO** is a data type that represents an effectful program that when ran will:
 * either
+  * may require an element of type `R` to execute.
   * produce a value of type `A`
   * fail with an error of type `E`
-* may require an element of type `R` to execute.
 
 Sometime an oversimplified mental model is to represent ZIO as:
   
@@ -250,11 +248,10 @@ Very important, ZIO is a combination of monads, and as such it provides a lot of
 
 A ZIO aka program, workflow, or effect:
 
-1. can be combined with other effects at will
-2. when resources and dependencies are provided to the effect, and the effect can be run
-3. and the result can be consumed by downstream effects
-4. error are be handled
-5. resources can be released
+* can be combined with other effects
+* error are be handled
+* when resources are acquired they will be released
+
 
 
 In a glance ZIO[–R,+E,+A] smart variance annotations allow a very convenient constructions like our Server side application:
@@ -305,7 +302,7 @@ Let see how ZIO, Layer per layer assembles the application.
 
 #### 6.1.1. Repository data layer
 
-Repository, the layer that abstract the database access, is the first layer of the application.
+Repository `datalayer` is the first layer of the application, its abstract the database access.
 
 In this project, classic Repository object connects the database through classical JDBC DataSource.
 
@@ -314,33 +311,40 @@ In this project, classic Repository object connects the database through classic
 
 object Repository {
 
-  def quillLayer: URLayer[DataSource, Postgres[SnakeCase.type]] =
-                                    Quill.Postgres.fromNamingStrategy(SnakeCase) // (1)
 
   private def datasourceLayer: TaskLayer[DataSource] =
-                                    Quill.DataSource.fromPrefix("db")            // (2)
+                                    Quill.DataSource.fromPrefix("db")            // (1)
+
+  def quillLayer: URLayer[DataSource, Postgres[SnakeCase.type]] =
+                                    Quill.Postgres.fromNamingStrategy(SnakeCase) // (2)
 
   def dataLayer: TaskLayer[Postgres[SnakeCase.type]] =
                                     datasourceLayer >>> quillLayer               // (3)
 
 }
 ```
-
-* **(1)** Quill layer, that will provide a Quill Postgres service, with a SnakeCase naming strategy for the table mapping.
-> **URLayer** is a type alias for a ZLayer that does require a dependency and cannot fail:
->
->  type **URLayer**[-R, +A] = ZLayer[R, **Nothing**, A]
-
-* **(2)** DataSource layer, that will provide a DataSource service from the configuration.
+* **(1)** DataSource layer, that will provide a DataSource service from the configuration.
 > TaskLayer is a type alias for a ZLayer that does not require a dependency and can fail with a Throwable:
 >
 >  type **TaskLayer**[+A] = ZLayer[Any, **Throwable**, A]
 
+
+* **(2)** Quill layer, that will provide a Quill Postgres service, with a SnakeCase naming strategy for the table mapping, this layer depends on the DataSource service.
+
+> **URLayer** is a type alias for a ZLayer that does require a dependency and cannot fail:
+>
+>  type **URLayer**[-R, +A] = ZLayer[R, **Nothing**, A]
+
+
 * **(3)** Data layer, that will provide a Quill Postgres service from the DataSource service.
+
+> **\>\>\>** operator is a ZLayer combinator that will chain the layers, it is a vertical composition of layers, that will provide the service from the first layer to the second layer.
+>
+> **++** operator is a ZLayer combinator that will merge the layers, it is a horizontal composition of layers.
 
 ZIO is rich of type alias that after a while will make the code very readable.
 
-### 5.1.2. User Repository 
+### 6.1.2. User Repository 
 
 User Repository is a classic repository that will handle the User entity.
 
@@ -394,7 +398,7 @@ SELECT x4.id, x4.name, x4.email, x4.age, x4.creation_date AS creationDate FROM u
 ```
 
 
-### 5.1.3. Flyway Service
+### 6.1.3. Flyway Service
 
 In the same way, Flyway service is a layer that will handle the database migrations.
 
@@ -478,9 +482,9 @@ class PersonServiceLive private (userRepository: UserRepository, notificatonServ
 And the layer would be derived from the constructor, without any additional code:
 
 ```scala
-object PersonServiceLive {
-  val layer: RLayer[UserRepository & NotificationService, PersonService] = ZLayer.derive[PersonServiceLive]
-}
+object PersonServiceLive:
+  val layer: RLayer[UserRepository & NotificationService, PersonService] =
+     ZLayer.derive[PersonServiceLive]
 ```
 
 Lifting a new dependency in the service is just a matter of adding it to the constructor, and the layer will be derived from the constructor. In this case, we would need to provide the NotificationService in the main program, and the PersonService would be able to use it.
@@ -521,9 +525,9 @@ This is a ZIO effect that will:
 >
 > **::** and **:::** are List concatenation operators, **::** is for a single element, **:::** is for a list of elements, with right associativity.
 >
-> Quite a Scala idiom, that will allow to build a list of elements in a very readable way.
->
 > `(metricsEndpoint :: (webJarRoutes :: (apiEndpoints ::: docEndpoints)))`
+>
+> Quite a Scala idiom, that will allow to build a list of elements in a very readable way.
 >
 > Hence, **metricsEndpoint :: webJarRoutes :: endpoints ::: docEndpoints** is a list of endpoints.
 
@@ -542,7 +546,8 @@ object HttpApi {
     personController <- PersonController.makeZIO
   } yield List(healthController, personController)
 
-  val endpointsZIO: URIO[PersonService, List[ServerEndpoint[Any, Task]]] = makeControllers.map(gatherRoutes)
+  val endpointsZIO: URIO[PersonService, List[ServerEndpoint[Any, Task]]] =
+                makeControllers.map(gatherRoutes)
 }
 
 ```
@@ -555,7 +560,7 @@ As it leverages Tapir, see next section [Tapir server side](#62-server-side) for
 In the meantime, enjoy the Mermaid [diagram of the dependencies](https://mermaid-js.github.io/mermaid-live-editor/edit/#eyJjb2RlIjoiZ3JhcGggQlRcbkwwKFwiU2VydmVyLmRlZmF1bHRcIilcbkwxKFwiUmVwb3NpdG9yeS5kYXRhTGF5ZXJcIikgLS0+IEwyKFwiVXNlclJlcG9zaXRvcnlMaXZlLmxheWVyXCIpXG5MMVxuTDIgLS0+IEwzKFwiUGVyc29uU2VydmljZUxpdmUubGF5ZXJcIilcbkw0KFwiRmx5d2F5U2VydmljZUxpdmUuY29uZmlndXJlZExheWVyXCIpIiwibWVybWFpZCI6ICJ7XCJ0aGVtZVwiOiBcImRlZmF1bHRcIn0ifQ==) compiled by ZIO.
 
 
-## 6. Tapir
+## 7. Tapir
 
 Tapir is a library for defining API endpoint as immutable data structures.
 
@@ -568,7 +573,7 @@ This is a huge win, because it allows to:
 
 Here is an example of Tapir endpoints definition:
 
-### 6.1. Shared Endpoint definitions
+### 7.1. Shared Endpoint definitions
 
 In the shared module, the API endpoints are defined as immutable data structures.
 
@@ -586,7 +591,7 @@ object PersonEndpoints {
     .post
     .in("person")
     .in(
-      jsonBody[Person]
+      jsonBody[Person]                                         // (1)
         .description("Person to create")
         .example(Person("John", 30, Left(Cat("Fluffy"))))
     )
@@ -601,7 +606,7 @@ This is a simple GET endpoint that will return a Person and a POST endpoint that
 From this definition, Tapir will help to generate the client and server side code, the documentation and the tests.
 
 
-### 6.2. Server side
+### 7.2. Server side
 
 On **server side**, Tapir Endpoints.create will be implemented by a ZIO effect, through the **zServerLogic** combinator.
 
@@ -611,31 +616,37 @@ class PersonController private (personService: PersonService) extends BaseContro
   [...]
 
   val create: ServerEndpoint[Any, Task] = PersonEndpoint.createEndpoint
-    .zServerLogic( // (2)
+    .zServerLogic(                                                // (2)
       p => personService.register(p)
     )
 
   val routes: List[ServerEndpoint[Any, Task]] =
-    List(create)
+    List(create, get, ...)                                        // (3)
 }
 
 object PersonController {
-  def makeZIO: URIO[PersonService, PersonController] = // (3)
-    ZIO.service[PersonService].map(new PersonController(_))
+  def makeZIO: URIO[PersonService, PersonController] =            // (4)
+    ZIO.service[PersonService]                                    // (4a)
+      .map(personSevice => new PersonController(personService))   // (4b)
 }
 
 ```
 
 * **(1)** Dependency Injection.
-* **(2)** Controller implementation, where json codec are transparently handled.
-* **(3)** Service instantiation:  URIO[PersonService, PersonController]
+* **(2)** Controller implementation, where json codec are transparently handled by Tapir
+  * `p: Person` is the payload of the request as describe in the endpoint definition.
+  * `personService.register(p)` is the ZIO effect that will register the person.
+* **(3)** List of endpoints that will be served by the controller.
+* **(4)** Service instantiation:  URIO[PersonService, PersonController]
+  * **(4a)** Get the PersonService from the environment.
+  * **(4b)** Instantiate the PersonController with the PersonService.
 
 
 Everything is IO, URIO[PersonService, PersonController] is an IO that needs a PersonService and will produce a PersonController and cannot fail.
 
 > **URIO** is a type alias for a ZIO that cannot fail:
 >
->   type **URIO**[R, A] = ZIO[R, **Nothing**, A]`
+>  type **URIO**[R, A] = ZIO[R, **Nothing**, A]`
 
 **zServerLogic** is part of the Tapir ZIO support, and bridges a ZIO in the Rest API.
 
@@ -645,14 +656,14 @@ Tapir provides a [lot of combinators](https://tapir.softwaremill.com/en/latest/s
 
 
 
-### 6.3. Client side
+### 7.3. Client side
 
-On **client side**, Tapir will allow to interact as client, il will leverage the same endpoint definition to generate the client side code.
+On **client side**, Tapir will allow to interact as client, it will leverage the same endpoint definition to generate the client side code.
 
 It will smartly generate the client side code, that will be used in the Laminar UI.
 
 
-## 7. Laminar 
+## 8. Laminar 
 
 [Laminar](https://laminar.dev) is a 100% Scala reactive UI library. In few words, Laminar provides reactive variables and events that can be watched and consumed in the UI:
 
@@ -663,18 +674,39 @@ It will smartly generate the client side code, that will be used in the Laminar 
 
 Laminar also provides Dom manipulation facilities, and bindings to WebComponent libraries (UI5 in this example).
 
+In this example, I use [LaminarSAPUI5Bindings](https://github.com/sherpal/LaminarSAPUI5Bindings) and Magnolia to [derive HTML forms]((https://cheleb.github.io/laminar-form-derivation/docs/index.html)) from a case class.
 
-## 7.1. ZIO, Tapir and Laminar
+```scala
+import dev.cheleb.scalamigen.*
+import com.raquo.laminar.api.L.*
+
+case class Cat(name: String, weight: Int, kind: Boolean = true)
+
+val catVar = Var(Cat("Scala le chat", 6))
+
+catVar.asForm
+```
+
+Et voilà, a form is derived from the case class, and can be rendered in the UI.
+
+![Laminar](../images/zio-fullstack/form-derived.png)
+
+
+### 8.1 Http client, unsecured and secured
 
 On **client side**, Tapir will allow to interact as client, is a very straightforward way: 
 
 ```scala
  Button(
   "-- Post -->",
-  onClick --> { _ => // (1)
-    PersonEndpoint // (2)
-      .createEndpoint(personVar.now()) // (2a andThen 2b)
-      .emitTo(userBus) // (3a and 3b)
+  onClick --> { _ =>     // (1)
+    PersonEndpoint       // (2)
+      .createEndpoint(
+        personVar.now()  // (2a)
+      )                  // (2b)
+      .emitTo(           // (3b)
+        userBus          // (3b)
+      ) 
   }
 )
 ```
@@ -774,9 +806,6 @@ object BackendClientLive:
   }
 ```
 
-
-
-
 In short term, in this one liner we:
 
 * open a channel to a Rest API in a full type safe manner
@@ -784,9 +813,152 @@ In short term, in this one liner we:
 * wait for the result.
 * piped the deserialised result in UI.
 
+### 8.2. Secured Endpoint
+
+In the same way, a secured client can be defined, that will handle the authentication and the authorization.
+
+Of course it will be a bit more complex, but the same principles will apply.
+
+Tapir do distinguish the secured endpoints from the unsecured ones, and will generate the client side code accordingly.
+
+For example, a secured endpoint will be defined like this:
+
+```scala
+val profile: Endpoint[String, Boolean, Throwable, (User, Option[Pet]), Any] = baseEndpoint
+    .securityIn(auth.bearer[String]())
+    .tag("person")
+    .name("profile")
+    .get
+    .in("profile")
+    .in(query[Boolean]("withPet").default(false))
+    .out(jsonBody[(User, Option[Pet])])
+    .description("Get profile")
+```
+
+Notice the first type parameter of the endpoint, it is a String, that will be the token, and that will be used to authenticate the request.
+
+This is a secured endpoint, that will require a bearer token to be called.
+
+#### 8.2.1. Secured Server
+
+The server will need to handle the authentication and the authorization.
+
+In the same way, the secured client will be defined with an extension method that will handle the authentication and the authorization.
+
+```scala
+                                  
+trait SecuredBaseController[SI, Principal](
+    principalExtractor: SI => Task[Principal]                       // (1)
+):
+  /** Enriches an endpoint with security logic
+    */
+  extension [I, O, R](endpoint: Endpoint[SI, I, Throwable, O, R])   // (2)
+    /** ZIO security logic for a server endpoint
+      *
+      * Extracts the user principal from
+      * the request Security Input, and applies
+      *
+      * @param logic,
+      *   curryied function from user principal
+      *   to request to response
+      * @return
+      */
+    @SuppressWarnings(Array("org.wartremover.warts.Any"))
+    def securedServerLogic(
+        logic: Principal => I => Task[O]                            // (3)
+    ): ServerEndpoint[R, Task] =
+      endpoint
+        .zServerSecurityLogic(principalExtractor)
+        .serverLogic(principal => input => logic(principal)(input))
+
+```
+
+This trait will provide an extension method that will handle the authentication and the authorization of the secured endpoint. But in a generic way, that will allow 
+to handle any kind of security input and any kind of principal.
+
+* **(1)** principalExtractor is a function that will extract the principal from the Security Input.
+* **(2)** extension method that will enrich the endpoint with security logic.
+* **(3)** logic is a function that will handle the request and the response, and that will depend on the principal.
+
+Then the controller (server side) will be defined like this:
+
+```scala
+class PersonController private (personService: PersonService, jwtService: JWTService)
+    extends BaseController
+    with SecuredBaseController[String, UserID](jwtService.verifyToken) {    // (1)                
 
 
-# All together
+  val profile: ServerEndpoint[Any, Task] = 
+    PersonEndpoint.profile.securedServerLogic { userId => withPet =>        // (2)
+      personService.getProfile(userId, withPet)
+  }
+}
+```
+
+* **(1)** The controller `extends SecuredBaseController` with the token extractor function: `String => Task[UserID]`.
+* **(2)** The curryied function that will handle the request and the response, and that will depend on the principal.
+
+On liner again.
+
+#### 8.2.2. Secured Client
+
+On client side, the secured client will be defined with an extension method that will handle the authentication. Im my humble opinion, this is the most impressive part of this article.
+
+Let see how the secured client will be used in the UI:
+
+```scala
+val userBus = new EventBus[(User, Option[Pet])]
+
+def apply() = div(
+                child <-- session(                                    // (1)
+                  div(h1("Please log in to view your profile"))       // (2)
+                )(_ =>
+                  div(
+                    onMountCallback { _ =>                            // (3)
+                      PersonEndpoint.profile(false).emitTo(userBus)   // (4)
+                    },
+                    h1("Profile Page"),                               // (5)
+                    // Display the user profile
+```
+
+* **(1)** session is a utility that will handle hold the User state.
+* **(2)** If the user is not logged in, display a message.
+* **(3)** When the component is mounted, call the secured endpoint.
+* **(4)** Emit the result to the EventBus.
+ this is because the token is handled another extension method that is triggered by the secured endpoint.
+* **(5)** Display the user profile.
+
+The attentive reader will notice that the secured endpoint is called without any token, just like the unsecured endpoint. How is it possible ?
+
+This is because the token is handled by the extension method that is triggered by the secured endpoint.
+
+```scala
+extension [I, E <: Throwable, O](endpoint: Endpoint[String, I, E, O, Any])    // (1)
+  /** Call the secured endpoint with a payload, and get a ZIO back.
+    * @param payload
+    * @return
+    */
+  @targetName("securedApply")
+  def apply[UserToken <: WithToken](                                          // (2)
+      payload: I
+  )(using session: Session[UserToken]): RIO[SameOriginBackendClient, O] =     // (3)
+    ZIO
+      .service[SameOriginBackendClient]
+      .flatMap(_.securedEndpointRequestZIO(endpoint)(payload))                // (4)
+```
+
+* **(1)** extension method that will enrich the secured endpoint with the token handling.
+* **(2)** UserToken is a type that will hold the token (generic), and that will be provided by the session.
+* **(3)** The session is a class that will provide access to the UserToken.
+* **(4)** The `securedEndpointRequestZIO`is the methhod will handle the token through the session and local storage.
+
+### 8.3. Take away on Http client
+
+With this extension methods, secured endpoints can be called in the same way as unsecured endpoints, and the token will be handled in a full type safe manner.
+
+This part an [external library](https://github.com/cheleb/zio-laminar-tapir).
+
+## All together
 
 Here is the [full code](https://github.com/cheleb/zio-laminar-demo/blob/master/modules/client/src/main/scala/com/example/ziolaminardemo/app/demos/scalariform/ScalariformDemoPage.scala#L32) of the page that will create a Person and display the registred User in the UI.
 
@@ -914,15 +1086,13 @@ A powerful combination, that allows to build a full stack webapp in a type safe 
 The [g8 starter](https://github.com/cheleb/zio-scalajs-laminar.g8) project needs:
 
 * better error handling
-* an example of JWT token handling
 * splitting the JavaScript into multiple files
-* to extract the ZIO-Laminar-Tapir facilities in a library.
 
  and maybe an example of WASM now that Scala.js has a [first full implementation of WasmGC](https://github.com/scala-js/scala-js/pull/4988).
  
  This is the subject of a future article.
 
-# In the end
+# In the end
 
 Hope you appreciate, this introduction.
 
@@ -939,6 +1109,7 @@ References:
 * Scalablytyped demo: [https://www.youtube.com/watch?v=UePrOa_1Am8](https://www.youtube.com/watch?v=UePrOa_1Am8)
 * UI5 Laminar bindings: [https://github.com/sherpal/LaminarSAPUI5Bindings](https://github.com/sherpal/LaminarSAPUI5Bindings)
 * HTML Form derivation: [https://cheleb.github.io/laminar-form-derivation/docs/index.html](https://cheleb.github.io/laminar-form-derivation/docs/index.html)
+* ZIO Laminar Tapir: [https://github.com/cheleb/zio-laminar-tapir](https://github.com/cheleb/zio-laminar-tapir)
 
 All the g8 scafolding code is available on [github zio-scalajs-laminar.g8](https://github.com/cheleb/zio-scalajs-laminar.g8)
 
