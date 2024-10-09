@@ -11,6 +11,8 @@ toc_label: "In this article"
 
 _By [Riccardo Cardin](https://github.com/rcardin)_
 
+TODO ForkJoinPool
+
 Concurrency is a beast that every developer must face at some point in their career. It is a complex topic that requires a deep understanding of the underlying mechanisms of the programming language and the runtime environment. Java developers have been dealing with concurrency for a long time, and the Java platform provides a rich set of tools to manage it. However, writing concurrent code in Java is not an easy task, and developers often struggle to write correct and efficient concurrent programs. Fortunately, Project Loom is here to help. We already covered the introduction of virtual threads in the JVM in the article [The Ultimate Guide to Java Virtual Threads](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/). In this article, we will explore the concept of structured concurrency and how Project Loom simplifies writing concurrent code in Java. 
 
 ## 1. Setting up the project
@@ -246,4 +248,35 @@ Fortunately, Project Loom provides a solution to the problem. It's called struct
 
 ## 3. Structured concurrency
 
-TODO
+Now that we understood the concerns with what we called plain-old concurrency, let's step back to the sequential solution for a moment:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws InterruptedException {
+  var user = findUserByIdPort.findUser(userId);
+  var repositories = findRepositoriesByUserIdPort.findRepositories(userId);
+  return new GitHubUser(user, repositories);
+}
+```
+
+As we said, despite being sequential and then not optimized, the above computation has some nice features. 
+
+The computation has a clear scope, and the exception handling is straightforward. We can think about the calls to `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods as they were children of the `findGitHubUser` method. The language guarantees that when the `findGitHubUser` method completes, all its children computation are completed too. We cannot have children computation that outlive the parent one. 
+
+We cannot have resource starvation or execution leaks neither. Again, it's the stack structure of modern programming languages that guarantees it. Every time a function terminates its execution, the runtime can clean up all the resources used by the computation. Moreover, if the `findUserByIdPort.findUser(userId)` method throws an exception, the `findRepositoriesByUserIdPort.findRepositories(userId)` method is not started.
+
+We can say that the syntactic structure of the code reflects the semantic structure of the computation. We can say that the code is structured. 
+
+Structured concurrency is a concurrency model that satisfies the above properties also in case of code that executes concurrently. It was introduced by Martin Sústrik in his blog post [Structured Concurrency](https://250bpm.com/blog:71/), and then popularized by Nathaniel J. Smith in his blog post [Notes on structured concurrency, or: Go statement considered harmful](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/). 
+
+At the core, its main objective is to provide a way to structure a concurrent computation in a way that the syntactic structure of the code reflects the semantic structure of the concurrency, satisfying the properties we've seen so far for the sequential code. We say that an operation can fork some children tasks to run concurrently. The relationships between the parent and the children tasks form a tree. 
+
+![Structured Concurrency Tasks Tree](/images/loom-structured-concurrency/structured-concurrency.png)
+
+The execution of the task in a node is guaranteed to be completed only when all the children tasks are completed. If a task throws an exception, all the sibling tasks are stopped, and the exception is propagated to the parent task.
+
+In our example, once we'll set up the structured concurrency, the execution of the `findGitHubUser` method will be completed only when the `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods are completed.
+
+Structured concurrency was already implemented in many programming languages. If we focused on the JVM, we can mention the [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/), Scala [Cats Effects Fibers](https://typelevel.org/cats-effect/docs/concepts#structured-concurrency), and [ZIO Fibers](https://zio.dev/reference/fiber/#structured-concurrency). Now, Project Loom introduces structured concurrency also for Java.
+
+Java implements structured concurrency though the `java.util.concurrent.StructuredTaskScope` type. Let's lean how to use it directly through coding.
