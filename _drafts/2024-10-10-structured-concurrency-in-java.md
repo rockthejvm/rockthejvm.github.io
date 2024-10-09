@@ -279,4 +279,54 @@ In our example, once we'll set up the structured concurrency, the execution of t
 
 Structured concurrency was already implemented in many programming languages. If we focused on the JVM, we can mention the [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/), Scala [Cats Effects Fibers](https://typelevel.org/cats-effect/docs/concepts#structured-concurrency), and [ZIO Fibers](https://zio.dev/reference/fiber/#structured-concurrency). Now, Project Loom introduces structured concurrency also for Java.
 
-Java implements structured concurrency though the `java.util.concurrent.StructuredTaskScope` type. Let's lean how to use it directly through coding.
+Java implements structured concurrency though the `java.util.concurrent.StructuredTaskScope` type. Let's lean how to use it directly through coding. First, we need to create the scope into which we want the properties of structured concurrency to be satisfied. Here is the code:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws ExecutionException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    // TODO
+    return null;
+  }
+}
+```
+
+We'll return on the `ShutdownOnFailure` type very soon. For now, we can say that it's one of the implementation of the `StructuredTaskScope` type, which is defined as follows:
+
+```java
+public class StructuredTaskScope<T> implements AutoCloseable
+```
+
+The type is a generic type `T` that represents the result of the computation. Moreover, it implements the `AutoCloseable` interface, which means we can use it inside a try-with-resources block. The try-with-resources block delimits the scope of the structured concurrency area. We'll see in a moment that the computation will leave the `try` block only when all the subtask created inside it are completed.
+
+Now, we need to create the subtasks. Using the structured concurrency terminology we introduced so far, the thread creating the `StructuredTaskScope` is the parent task, and the subtasks are the children tasks. Here is the code:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws ExecutionException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    // TODO
+    return null;
+  }
+}
+```
+
+As we can see, we can spawn or fork a new child task using the `fork` method of the `StructuredTaskScope` type, which is defined as follows:
+
+```java
+// Java SDK
+public class StructuredTaskScope<T> implements AutoCloseable { 
+  public <U extends T> Subtask<U> fork(Callable<? extends U> task)
+}
+```
+
+The `fork` method takes a `Callable<T>` object as argument and returns a `Subtask<T>` object. The `Subtask<T>` object is a handle to the child task. To be fair, the `Subtask<T>` is defined as implementation of the `Supplier<T>` interface, which means we can retrieve the result of the computation using the `get` method:
+
+```java
+// Java SDK
+public sealed interface Subtask<T> extends Supplier<T> permits SubtaskImpl
+```
+
+If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations which are not structured, and give a clear cut with the past. 
