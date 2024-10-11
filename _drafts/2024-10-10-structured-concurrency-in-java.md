@@ -284,27 +284,27 @@ Java implements structured concurrency though the `java.util.concurrent.Structur
 ```java
 @Override
 public GitHubUser findGitHubUser(UserId userId) throws ExecutionException {
-  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+  try (var scope = new StructuredTaskScope<>()) {
     // TODO
     return null;
   }
 }
 ```
 
-We'll return on the `ShutdownOnFailure` type very soon. For now, we can say that it's one of the implementation of the `StructuredTaskScope` type, which is defined as follows:
+The type is a generic type `T` that represents the result of the computations spawned from it. Since we'll often spawn more than one task with different return type, we usually bound the type variable to `Object`. The type implements the `AutoCloseable` interface, which means we can use it inside a try-with-resources block:
 
 ```java
 public class StructuredTaskScope<T> implements AutoCloseable
 ```
 
-The type is a generic type `T` that represents the result of the computation. Moreover, it implements the `AutoCloseable` interface, which means we can use it inside a try-with-resources block. The try-with-resources block delimits the scope of the structured concurrency area. We'll see in a moment that the computation will leave the `try` block only when all the subtask created inside it are completed.
+The try-with-resources block delimits the scope of the structured concurrency area. We'll see in a moment that the computation will leave the `try` block only when all the subtask created inside it are completed.
 
 Now, we need to create the subtasks. Using the structured concurrency terminology we introduced so far, the thread creating the `StructuredTaskScope` is the parent task, and the subtasks are the children tasks. Here is the code:
 
 ```java
 @Override
 public GitHubUser findGitHubUser(UserId userId) throws ExecutionException {
-  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+  try (var scope = new StructuredTaskScope<>()) {
     var user = scope.fork(() -> findUserByIdPort.findUser(userId));
     var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
     // TODO
@@ -329,4 +329,48 @@ The `fork` method takes a `Callable<T>` object as argument and returns a `Subtas
 public sealed interface Subtask<T> extends Supplier<T> permits SubtaskImpl
 ```
 
-If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations which are not structured, and give a clear cut with the past. 
+If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations which are not structured, and give a clear-cut with the past.
+
+Before getting the result from a `Subtask<T>` object, we need to make sure that the computation is completed. Since we're using the structured concurrency model, we want to synchronize on the executions of all the children tasks. So, we call the method `join` method on the `scope` object:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope<>()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    scope.join();
+    return null;
+  }
+}
+```
+
+After joining all the forked subtask, we can finally retrieve the results, since we know for sure that all the computations are completed. Here is the piece of our puzzle:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope<>()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    scope.join();
+    return new GitHubUser(user.get(), repositories.get());
+  }
+}
+```
+
+If we run the `main` method again, we'll see the following output:
+
+```
+10:02:15.473 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+10:02:15.473 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+10:02:15.994 [virtual-20] INFO GitHubApp -- User 'UserId[value=1]' found
+10:02:16.495 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+10:02:16.552 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
+```
+
+First, we can see that the two forked computation effectively interleave each other. Then, you might have noticed that the `StructuredTaskScope` class uses virtual threads under the hood, as it can be seen from the thread names.
+
+So, we just finish covering the happy path of structured concurrency, the way Project Loom implements it. Now, it's time to go deeper in which are the available policies for synchronization of forked tasks, and how to handle exceptions.
+
+## 4. Synchronization Policies
