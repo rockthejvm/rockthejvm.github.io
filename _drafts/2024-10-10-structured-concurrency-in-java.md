@@ -340,6 +340,7 @@ public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, Inter
     var user = scope.fork(() -> findUserByIdPort.findUser(userId));
     var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
     scope.join();
+    LOGGER.info("Both forked task completed");
     return null;
   }
 }
@@ -354,6 +355,7 @@ public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, Inter
     var user = scope.fork(() -> findUserByIdPort.findUser(userId));
     var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
     scope.join();
+    LOGGER.info("Both forked task completed");
     return new GitHubUser(user.get(), repositories.get());
   }
 }
@@ -362,11 +364,12 @@ public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, Inter
 If we run the `main` method again, we'll see the following output:
 
 ```
-10:02:15.473 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
-10:02:15.473 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
-10:02:15.994 [virtual-20] INFO GitHubApp -- User 'UserId[value=1]' found
-10:02:16.495 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
-10:02:16.552 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
+11:06:36.350 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+11:06:36.350 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+11:06:36.874 [virtual-20] INFO GitHubApp -- User 'UserId[value=1]' found
+11:06:37.374 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+11:06:37.377 [main] INFO GitHubApp -- Both forked task completed
+11:06:37.380 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
 ```
 
 First, we can see that the two forked computation effectively interleave each other. Then, you might have noticed that the `StructuredTaskScope` class uses virtual threads under the hood, as it can be seen from the thread names.
@@ -374,3 +377,150 @@ First, we can see that the two forked computation effectively interleave each ot
 So, we just finish covering the happy path of structured concurrency, the way Project Loom implements it. Now, it's time to go deeper in which are the available policies for synchronization of forked tasks, and how to handle exceptions.
 
 ## 4. Synchronization Policies
+
+Let's say that our `findUserByIdPort.findUser(userId)` method will throw an exception, as we previously simulated when we talked about plain-old concurrency. What happens to our structured concurrency computation? Let's see it in action, and executes it:
+
+```
+11:07:17.590 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+11:07:17.590 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+11:07:18.616 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+11:07:18.632 [main] INFO GitHubApp -- Both forked task completed
+Exception in thread "main" java.lang.IllegalStateException: Result is unavailable or subtask did not complete successfully
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.get(StructuredTaskScope.java:940)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.findGitHubUser(GitHubApp.java:156)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:166)
+```
+
+The above log is very interesting. First, we see that parent thread waits for the end of both tasks before continuing. So, the tree structure of the computation is respected. The computation went in error when we tried to get the result from the failed computation. Moreover, the second task was not canceled once the first had gone in error. It seems we didn't achieve much with structured concurrency until now.
+
+The issue is the type of the scope we chose to use. In fact, the `StructuredTaskScope<T>` doesn't implement any advanced policy for error handling. It's a simple blueprint to build advanced policies. At the moment of writing, project Loom comes with two implementations of the `StructuredTaskScope<T>` type: `java.util.concurrent.StructuredTaskScope.ShutdownOnFailure` and `java.util.concurrent.StructuredTaskScope.ShutdownOnSuccess`
+
+Let's start with analyzing the first one. We'll do using it directly into our example and see what happens. Here is the code:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId)
+    throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    scope.join();
+    LOGGER.info("Both forked task completed");
+    return new GitHubUser(user.get(), repositories.get());
+  }
+}
+```
+
+First, we execute the case in which no exception is thrown. The output is the following:
+
+```
+08:21:05.040 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+08:21:05.041 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+08:21:05.583 [virtual-20] INFO GitHubApp -- User 'UserId[value=1]' found
+08:21:06.087 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+08:21:06.108 [main] INFO GitHubApp -- Both forked task completed
+08:21:06.111 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
+```
+
+As we can see, there is nothing interesting. The behavior is the same of the execution with the `StructuredTaskScope` type as expected. Now, let's see what happens when the `findUserByIdPort.findUser(userId)` method throws an exception:
+
+```
+08:22:42.466 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+08:22:42.466 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+08:22:42.590 [main] INFO GitHubApp -- Both forked task completed
+Exception in thread "main" java.lang.IllegalStateException: Result is unavailable or subtask did not complete successfully
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.get(StructuredTaskScope.java:940)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.findGitHubUser(GitHubApp.java:157)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:167)
+```
+
+Well, the output looks very promising. The second task was stopped (canceled) as soon as the first one went in error. The parent task was not stop and a `java.lang.IllegalStateException` exception was thrown when we tried to get the result from the failed computation. So, we solved one of the problems of unstructured concurrency, thread leaks and resources starvation. A good step forward.
+
+However, the thrown exception was not the original exception thrown by the child computation in error. We completely lost the original cause of error. However, we can do better. The `StructuredTaskScope.ShutdownOnSuccess` scope adds a method to the available ones, `throwIfFailed`. As the documentation said, the method throws if any of the subtasks failed. The method throws an `java.util.concurrent.ExecutionException` exception set with the original exception as its cause. If no subtask failed, the method returns normally.
+
+We change first our code to see the new behavior in action:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId)
+    throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+
+    LOGGER.info("Both forked task completed");
+    
+    scope.join().throwIfFailed();
+    
+    return new GitHubUser(user.get(), repositories.get());
+  }
+}
+```
+
+If we run the code, we'll notice that the behavior is the expected one. The output is the following:
+
+```
+08:34:53.701 [main] INFO GitHubApp -- Both forked task completed
+08:34:53.701 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+08:34:53.700 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+Exception in thread "main" java.util.concurrent.ExecutionException: java.lang.RuntimeException: Socket timeout
+	at java.base/java.util.concurrent.StructuredTaskScope$ShutdownOnFailure.throwIfFailed(StructuredTaskScope.java:1324)
+	at java.base/java.util.concurrent.StructuredTaskScope$ShutdownOnFailure.throwIfFailed(StructuredTaskScope.java:1301)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.findGitHubUser(GitHubApp.java:156)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:168)
+Caused by: java.lang.RuntimeException: Socket timeout
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$GitHubRepository.findUser(GitHubApp.java:68)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.lambda$findGitHubUser$0(GitHubApp.java:151)
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.run(StructuredTaskScope.java:893)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+```
+
+If we want to change the type of the exception thrown by the `throwIfFailed`, the method comes with an override that takes a function as input to map the exception. Here is the code:
+
+```java
+// Java SDK
+public <X extends Throwable> void throwIfFailed(Function<Throwable, ? extends X> esf) throws X
+```
+
+Let's say we want to rethrow exactly the original exception. We can do it using the identity function:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId)
+    throws Throwable {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    
+    LOGGER.info("Both forked task completed");
+    
+    scope.join().throwIfFailed(Function.identity());
+    
+    return new GitHubUser(user.get(), repositories.get());
+  }
+}
+```
+
+If we run the code, we'll see the following output:
+
+```
+08:46:38.451 [main] INFO GitHubApp -- Both forked task completed
+08:46:38.450 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+08:46:38.451 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+Exception in thread "main" java.lang.RuntimeException: Socket timeout
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$GitHubRepository.findUser(GitHubApp.java:70)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.lambda$findGitHubUser$0(GitHubApp.java:153)
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.run(StructuredTaskScope.java:893)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+```
+
+As we can see from the log, we successfully rethrow the original exception. However, there is an issue we should be aware of. The `throwIfFailed` method takes a function with a `Throwable` instance as input to `Throwable`, which means that the function will be called also for terminal errors, such as `OutOfMemoryError` or `StackOverflowError`. As a rule of thumb, we should avoid catching such errors, and let the JVM handle them. So, if we need to process the error with the `throwIfFailed` method, remember to check if the input is an instance of `Exception` or `Error` and act accordingly:
+
+```java
+scope.join().throwIfFailed(throwable -> {
+  if (throwable instanceof Exception) {
+    // Handle the exception
+  }
+  else throw (Error) throwable; 
+});
+```
