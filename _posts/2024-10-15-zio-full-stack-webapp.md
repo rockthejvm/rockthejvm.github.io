@@ -170,7 +170,7 @@ Thanks to the power of SBT and multi-module support, it easy to compile and pack
 
 In VS code you can see the modules view:
 
-```xml
+
 <table>
   <tr>
     <td>
@@ -201,7 +201,7 @@ In VS code you can see the modules view:
   </td>
   </tr>
 </table>
-```
+
 
 Sometimes we need to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63), like the index.html of the server module. This is done with SBT only when the server module is build.
 
