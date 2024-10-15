@@ -1,6 +1,6 @@
 ---
 title: "How to Build a ZIO Full-Stack Web Application"
-date: 2024-07-05
+date: 2024-10-15
 header:
   image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [scala, zio, laminar, tapir]
@@ -11,29 +11,26 @@ toc_label: "In this article"
 
 _by [Olivier NOUGUIER](https://github.com/cheleb)_
 
-# Full stack ZIO Scala WebApp
+> This article showcases Olivier's template of a Scala full-stack web application with ZIO and Laminar, after he completed the giant [ZIO Rite of Passage](https://rockthejvm.com/p/zio-rite-of-passage) course on Rock the JVM. The course teaches you to build a full-blown product from scratch with the principles outlined in the article. If this sounds exciting, check it out [here](https://rockthejvm.com/p/zio-rite-of-passage).
 
-Leverage Scala / ScalaJS with ZIO and Laminar to build reactive webapp.
-
-This simple application will expose a REST API to register a person, and will display the registered user in a reactive UI. It will leverage the Scala ecosystem to build a full stack webapp in a type safe manner, extensively using Scala `derive` and `extension` mechanism.
+In this article, we will show a full-stack web application with Scala and ZIO. This application will expose a REST API to register a person, and will display the registered user in a reactive UI. It will leverage the Scala ecosystem to build a full stack web app in a type safe manner, extensively using Scala `derive` and `extension` mechanism.
 
 ![ZIO Fullstack](../images/zio-fullstack/demo.png)
 
-
-Build a full stack webapp application using the same language has been a never ending quest.
+Building a full stack web application using the same language has been a never-ending quest.
 
 In general, dynamically typed languages and their loosely compilation guarantees are hard to compete with because of:
 
 * easy setup
 * isomorphic by nature, no need for translation between back and front payload
-* quick feedback loop, "just hit reload" 
+* quick feedback loop, "just hit reload"
 
 On the opposite side, statically typed languages are perceived with somewhat good reason as pachyderm on a wire, where static code guarantees are eclipsed by:
 * convoluted setup
 * polyglot applications, and payload conversion (eg: Scala/Java -> Json)
-* no/slow feedback during development
+* slow feedback during development
 
-In this article, I will demonstrate you how my ❤ Scala ecosystem changed the game.
+In this article, I will demonstrate you how the Scala ecosystem changed the game for me.
 
 Without compromising type safety guarantees of Scala and in the meantime being able to embed library from JavaScript/TypeScript ecosystem.
 
@@ -44,7 +41,6 @@ Without compromising type safety guarantees of Scala and in the meantime being a
 * **Docker**: For the database
 * **VSCode**: The editor of choice
 
-
 ## 2. What is inside
 
 * **ZIO**: Functional Effect System on both back and front side.
@@ -52,20 +48,18 @@ Without compromising type safety guarantees of Scala and in the meantime being a
 * **Tapir**: Providing and giving access to a Rest API in a type safe and incredible elegant way.
 * **Laminar**: "Simple, expressive, and safe UI library for Scala.js"
 
+The approach is to build a full stack web app with the same language (Scala) on both the client and the server side.
 
-The approach is to build a full stack webapp with the same language, Scala, on both the client and the server side.
-
-This is a very powerful combination, that allows to build a full stack webapp in a type safe manner. And in the mean time we can leverage the JavaScript ecosystem, without compromising type safety, architecture and scalability of the application.
-
+This is a very powerful combination, that allows to build a full stack web app in a type safe manner. And in the meantime we can leverage the JavaScript ecosystem, without compromising type safety, architecture and scalability of the application.
 
 ## 3. Setup
 
 
-Within a single repository, we will setup a multi-modules application using:
+Within a single repository, we will set up a multi-modules application using:
 
 * **SBT**, Scala build tool
 * **NPM**, Node Package manager
-* **Vite**, development and build tool. 
+* **Vite**, development and build tool.
 
 For the very impatient, I've cooked a [g8](https://www.foundweekends.org/giter8/scaffolding.html) template 👇:
 
@@ -79,13 +73,13 @@ This setup is a little complex because it handles:
 * Hot reload of UI
 * Production packaging
 
-If you are a vscode / metals user, you might be lucky:
+If you are a VSCode / metals user, you might be lucky:
   
 ```bash
   code zio-laminar-demo
 ```
 
-Leveraging the [tasks vscode](https://code.visualstudio.com/docs/editor/tasks) support, and  after few downloads, your new full stack development environment should look like:
+Leveraging the [tasks VSCode](https://code.visualstudio.com/docs/editor/tasks) supports, and after a few downloads, your new full stack development environment should look like this:
 
 ![tasks](../images/zio-fullstack/tasks.png)
 
@@ -95,7 +89,7 @@ Leveraging the [tasks vscode](https://code.visualstudio.com/docs/editor/tasks) s
   * **docker**: Starts a PostgreSQL database in a docker container.
   * **serverRun**: The dev mode hot reloading API [http://localhost:8080/docs/](http://localhost:8080/docs/) with the Swagger.
 * Client side:
-  * **fastlink**: Scala to JS compilation/transpilation 
+  * **fastlink**: Scala to JS compilation/transpilation
   * **npmDev**: [http://localhost:5173/](http://localhost:5173/) now serves your client web app in development mode, hot reloading with Vite.
 
   Visit the [registration from at http://localhost:5173/](http://localhost:5173/demos/scalariform) and register a person, you should see the registered user in the UI.
@@ -104,14 +98,14 @@ Leveraging the [tasks vscode](https://code.visualstudio.com/docs/editor/tasks) s
 
 In this section, we'll briefly cover the most important details about the project build.
 
-### 4.1. Scala/ScalaJS world 
+### 4.1. Scala/ScalaJS
 
 Scala build here is driven by SBT in a rather classic way, except for the `shared` project that will be cast in two different worlds `.jvm` and `.js`
 Generated build contains documentation on details. Please take a look and don't hesitate to ask question/provide PR on the g8.
 
 For **ScalaJS**
 
-* "org.scala-js"  % "[sbt-scalajs](http://www.scala-js.org/doc/sbt-plugin.html)" % "1.17.0" 
+* "org.scala-js"  % "[sbt-scalajs](http://www.scala-js.org/doc/sbt-plugin.html)" % "1.17.0"
 * "ch.epfl.scala" % "[sbt-scalajs-bundler](https://scalacenter.github.io/scalajs-bundler/index.html)" % "0.21.1" will bundle the app
 * "ch.epfl.scala" % "[sbt-web-scalajs-bundler](https://scalacenter.github.io/scalajs-bundler/getting-started.html#sbt-web)" % "0.21.1" will expose the bundle as classpath resource for sbt-web (websjar).
 
@@ -124,11 +118,11 @@ Shared project configuration 👇
 * ![Scala](../images/zio-fullstack/scala.png) Server project aka Scala JVM depends `share.jvm` variant
 * ![ScalaJS](../images/zio-fullstack/scalajs.png) Client project aka Scala JS depends on `shared.js` variant
 
-ScalaJS and ScalaJS bundler are smart enough to crosscompile and deploy `module/shared/src/main/scala` sources in both target.
+ScalaJS and ScalaJS bundler are smart enough to cross-compile and deploy `module/shared/src/main/scala` sources in both target.
 
-### 4.3. JS world
+### 4.3. JS integration
 
-JS integration is also a classical one with NPM and Vite fellow, here a again specific configuration is limited to vite.config.js
+JS integration is also a classical one with NPM and Vite, here a again specific configuration is limited to vite.config.js
 
 ```javascript
 import { defineConfig } from "vite";
@@ -156,28 +150,27 @@ export default defineConfig({
 });
 ```
 
-Where most of the work is achieved by `@scala-js/vite-plugin-scalajs` plugin, that will:
+Where most of the work is achieved by `@scala-js/vite-plugin-scalajs` plugin, which needs to know:
 
-* **(1)** needs to know where to find the sbt build and which project to use.
-* **(2)** needs to know the sbt project ID to get fast/fullLinkJS from.
+* **(1)** the location of the sbt build and which project to use
+* **(2)** the sbt project ID to get fast/fullLinkJS from
 
-During development, the sbt project must be bundled as ESModule, if you are using the g8 template, this is [already the case](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L97).
+During development, the sbt project must be bundled as ESModule. If you are using the g8 template, this is [already the case](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L97).
 
 In this setup:
 
 * **fastLinkJS** runs the Scala to JS process in watch mode.
-* **Vite** will serve the app in http://localhost:5173/ and reload the client automaticaly.
-
-
+* **Vite** will serve the app in http://localhost:5173/ and reload the client automatically.
 
 This setting will allow Vite to hot reload changes on the fly, giving an incredible developer experience.
 
 ## 5. Project structure
 
-Thanks to SBT power and multi module support, it easy to compile and package all together.
+Thanks to the power of SBT and multi-module support, it easy to compile and package all together.
 
 In VS code you can see the modules view:
 
+```xml
 <table>
   <tr>
     <td>
@@ -208,15 +201,15 @@ In VS code you can see the modules view:
   </td>
   </tr>
 </table>
+```
 
-Sometime we need to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63), like the index.html of the server module, this is done with SBT only when the server module is build.
+Sometimes we need to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63), like the index.html of the server module. This is done with SBT only when the server module is build.
 
-
-Let's see how ZIO, Laminar and Tapir can be combined to build a full stack webapp.
+Let's see how ZIO, Laminar and Tapir can be combined to build a full stack web app.
 
 ## 6. Server side
 
-From now we will focus on the server side, but the same principles will apply to the client side. 
+We will now focus on the server side, but the same principles will apply to the client side. 
 
 We will see how ZIO will combine:
 
@@ -226,35 +219,28 @@ We will see how ZIO will combine:
 
 ### 6.1. ZIO
 
-A library for asynchronous and concurrent programming in Scala.
+A library for asynchronous and concurrent programming in Scala. There's a lot to say about it and Rock the JVM teaches this in detail in a [dedicated ZIO course](https://rockthejvm.com/p/zio), but we'll cover the essentials below. 
 
-**ZIO** is a data type that represents an effectful program that when ran will:
-* either
-  * may require an element of type `R` to execute.
-  * produce a value of type `A`
-  * fail with an error of type `E`
+**ZIO** is a data type that represents an effectful program that when evaluated:
+  * will require an element of type `R` to execute
+  * may produce a value of type `A`
+  * may fail with an error of type `E`
 
-Sometime an oversimplified mental model is to represent ZIO as:
+Sometimes an oversimplified mental model is to represent ZIO as:
   
 ```scala
   type ZIO[R, E, A] = R => Either[E, A]
 ```
 
-
-
-But ZIO is much more than that, it is a full fledged library that provides a lot of utilities to handle effects, blocking, concurrency, retry, and so on.
-
-Very important, ZIO is a combination of monads, and as such it provides a lot of combinators to handle effects, errors and dependencies.
+But ZIO is much more than that, it is an extensive library that provides a lot of utilities to handle effects, blocking, concurrency, retry, and so on. Very importantly, ZIO is a monad, and as such it provides a lot of combinators to handle effects, errors and dependencies.
 
 A ZIO aka program, workflow, or effect:
 
 * can be combined with other effects
-* error are be handled
-* when resources are acquired they will be released
+* can handle errors, returning new effects as result
+* will release resources when acquired
 
-
-
-In a glance ZIO[–R,+E,+A] smart variance annotations allow a very convenient constructions like our Server side application:
+At a glance, `ZIO[–R,+E,+A]` uses variance annotations to allow a very convenient constructions like our Server side application:
 
 ```scala
 object HttpServer extends ZIOAppDefault {
@@ -285,32 +271,21 @@ object HttpServer extends ZIOAppDefault {
 }
 ```
 
-* Two ZIO effects:
-  * **(1)** `runMigrations` is a ZIO[**FlywayService**, …] that depends on a FlywayService, and that will handle the database migrations.
-  * **(2)** `server` is a ZIO[**PersonService & Server**, …] that depends on a PersonService and a Server and that will handle the HTTP server.
+* Two ZIO effects are running in this application:
+  * **(1)** `runMigrations` is a ZIO[**FlywayService**,…] that depends on a FlywayService, and that will handle the database migrations.
+  * **(2)** `server` is a ZIO[**PersonService & Server**,…] that depends on a PersonService and a Server and that will handle the HTTP server.
 * Those two effects combine in a for comprehension **(3)** to produce a new ZIO **(4)** that accumulate the dependencies:
+ ZIO[**FlywayService & PersonService & Server**,…]
 
- ZIO[**FlywayService & PersonService & Server**, …]
-
-To be runnable those dependencies need to be satisfied **(5)**, this is what layers are made for.
-
-Layer is a ZIO concept that will provide a service, and that can depend on other services.
-
-Let see how ZIO, Layer per layer assembles the application.
-
-
+To be runnable, those dependencies need to be satisfied **(5)**. This is what layers are made for. A layer is a ZIO concept that will provide a service, and that can depend on other services. Letțs see how ZIO, assembles the application, one layer after another.
 
 #### 6.1.1. Repository data layer
 
-Repository `datalayer` is the first layer of the application, its abstract the database access.
-
-In this project, classic Repository object connects the database through classical JDBC DataSource.
-
+Repository `datalayer` is the first layer of the application, it abstracts the database access. In this project, a classic Repository object connects the database through a classical JDBC DataSource.
 
 ```scala
 
 object Repository {
-
 
   private def datasourceLayer: TaskLayer[DataSource] =
                                     Quill.DataSource.fromPrefix("db")            // (1)
@@ -323,32 +298,30 @@ object Repository {
 
 }
 ```
-* **(1)** DataSource layer, that will provide a DataSource service from the configuration.
+
+* This requires a **(1)** DataSource layer, that will provide a DataSource service from the configuration.
 > TaskLayer is a type alias for a ZLayer that does not require a dependency and can fail with a Throwable:
 >
 >  type **TaskLayer**[+A] = ZLayer[Any, **Throwable**, A]
 
 
-* **(2)** Quill layer, that will provide a Quill Postgres service, with a SnakeCase naming strategy for the table mapping, this layer depends on the DataSource service.
-
+* The second requirement is **(2)** Quill layer, that will provide a Quill Postgres service, with a SnakeCase naming strategy for the table mapping, this layer depends on the DataSource service.
 > **URLayer** is a type alias for a ZLayer that does require a dependency and cannot fail:
 >
 >  type **URLayer**[-R, +A] = ZLayer[R, **Nothing**, A]
 
 
-* **(3)** Data layer, that will provide a Quill Postgres service from the DataSource service.
+* The third requirement is a **(3)** data layer, that will provide a Quill Postgres service from the DataSource service.
 
-> **\>\>\>** operator is a ZLayer combinator that will chain the layers, it is a vertical composition of layers, that will provide the service from the first layer to the second layer.
->
-> **++** operator is a ZLayer combinator that will merge the layers, it is a horizontal composition of layers.
+> The `>>>` operator is a ZLayer combinator that will chain the layers. It is a vertical composition of layers, that will provide the service from the first layer to the second layer.
+> The `++` operator is a ZLayer combinator that will merge the layers, it is a horizontal composition of layers.
+> [This video](https://www.youtube.com/watch?v=PaogLRrYo64) on Rock the JVM's YouTube channel explains layer composition.
 
-ZIO is rich of type alias that after a while will make the code very readable.
+ZIO contains a rich variety of type aliases that after a while will make the code very readable.
 
 ### 6.1.2. User Repository 
 
-User Repository is a classic repository that will handle the User entity.
-
-
+The User Repository is a classic repository that will handle the User entity.
 
 ```scala
 trait UserRepository:                            // (1)
@@ -383,20 +356,16 @@ object UserRepositoryLive: // (5)                                        (6)
 * **(6)** One of the many ZIO macro that will generate the layer for you, from the constructor of the class (2).
 
 
-💡 Note how `ZLayer.derive[UserRepositoryLive]` is used to generate the layer from the constructor of the class, and how this layer is then depends on the `Postgres[SnakeCase]`.
-
+> Note how `ZLayer.derive[UserRepositoryLive]` is used to generate the layer from the constructor of the class, and how this layer is then depends on the `Postgres[SnakeCase]`.
 
 Quill is a compile-time query language for Scala and SQL. It allows to write queries in Scala and compile them to SQL.
 
-
 Quill compiles **(4a)** and **(4b)** to SQL like this:
-
 
 ```sql
 INSERT INTO users (name,email,age,creation_date) VALUES (?, ?, ?, ?) RETURNING id, name, email, age, creation_date;
 SELECT x4.id, x4.name, x4.email, x4.age, x4.creation_date AS creationDate FROM users x4 WHERE x4.id IS NULL AND ? IS NULL OR x4.id = ?;
 ```
-
 
 ### 6.1.3. Flyway Service
 
@@ -431,7 +400,7 @@ In this example, the PersonService will check if the person is older than 18 bef
 
 > **Task** is a type alias for a ZIO that can fail with a Throwable:
 >
->  type **Task**[A] = ZIO[Any, **Throwable**, A]
+>  `type **Task**[A] = ZIO[Any, **Throwable**, A]`
 
 
 ```scala
@@ -489,13 +458,11 @@ object PersonServiceLive:
 
 Lifting a new dependency in the service is just a matter of adding it to the constructor, and the layer will be derived from the constructor. In this case, we would need to provide the NotificationService in the main program, and the PersonService would be able to use it.
 
-This is really powerful, convenient during development, and efficient at runtime hence allow to build a very modular and scalable application.
-
-
+This is really powerful, convenient during development, and efficient at runtime &mdash; a truly modular and scalable application.
 
 #### 6.1.5. Server layer
 
-Server layer is a layer that will handle the HTTP server, is provided by ZIO Http with convenient default configuration.
+The Server layer is a layer that will handle the HTTP server. It is provided by ZIO HTTP with convenient default configuration.
 
 It is a dependency that will be provided to the server effect.
 
@@ -521,18 +488,15 @@ This is a ZIO effect that will:
 * **(3)** start the server, and serve the all endpoints.
 * **(4)** metrics, webjar routes, endpoints and documentation endpoints are served by the server.
 
-> **Cons** operator.
->
-> **::** and **:::** are List concatenation operators, **::** is for a single element, **:::** is for a list of elements, with right associativity.
+> The `::` and `:::` are List concatenation operators, `::` is for a single element, `:::` is for a list of elements, with right-associativity.
 >
 > `(metricsEndpoint :: (webJarRoutes :: (apiEndpoints ::: docEndpoints)))`
 >
 > Quite a Scala idiom, that will allow to build a list of elements in a very readable way.
 >
-> Hence, **metricsEndpoint :: webJarRoutes :: endpoints ::: docEndpoints** is a list of endpoints.
+> Hence, `metricsEndpoint :: webJarRoutes :: endpoints ::: docEndpoints` is a list of endpoints.
 
-This endpoints are a combination of the metrics endpoint, the webjar routes, the API endpoints and the documentation endpoints.
-
+The endpoints are a combination of the metrics endpoint, the webjar routes, the API endpoints and the documentation endpoints.
 
 ```scala
 object HttpApi {
@@ -556,22 +520,20 @@ And last part of puzzle, PersonController that will provide the API endpoints.
 
 As it leverages Tapir, see next section [Tapir server side](#62-server-side) for more details.
 
-
 In the meantime, enjoy the Mermaid [diagram of the dependencies](https://mermaid-js.github.io/mermaid-live-editor/edit/#eyJjb2RlIjoiZ3JhcGggQlRcbkwwKFwiU2VydmVyLmRlZmF1bHRcIilcbkwxKFwiUmVwb3NpdG9yeS5kYXRhTGF5ZXJcIikgLS0+IEwyKFwiVXNlclJlcG9zaXRvcnlMaXZlLmxheWVyXCIpXG5MMVxuTDIgLS0+IEwzKFwiUGVyc29uU2VydmljZUxpdmUubGF5ZXJcIilcbkw0KFwiRmx5d2F5U2VydmljZUxpdmUuY29uZmlndXJlZExheWVyXCIpIiwibWVybWFpZCI6ICJ7XCJ0aGVtZVwiOiBcImRlZmF1bHRcIn0ifQ==) compiled by ZIO.
-
 
 ## 7. Tapir
 
 Tapir is a library for defining API endpoint as immutable data structures.
 
-This is a huge win, because it allows to:
+This is a huge win, because it allows us to:
 
 * define the API once
 * generate the client and server side
 * generate the documentation
 * test the controller in an isolated way
 
-Here is an example of Tapir endpoints definition:
+Here is an example of a Tapir endpoint definition:
 
 ### 7.1. Shared Endpoint definitions
 
@@ -579,7 +541,7 @@ In the shared module, the API endpoints are defined as immutable data structures
 
 ```scala
 object PersonEndpoints {
-  val get Endpoint[Unit, String, Person, Any] = endpoint.get
+  val get: Endpoint[Unit, Unit, String, Person, Any] = endpoint.get
     .in("person")
     .out(jsonBody[Person])
     .errorOut(stringBody)
@@ -603,12 +565,11 @@ object PersonEndpoints {
 
 This is a simple GET endpoint that will return a Person and a POST endpoint that will create a Person and return a User.
 
-From this definition, Tapir will help to generate the client and server side code, the documentation and the tests.
-
+From this definition, Tapir will help generate the client and server side code, the documentation and the tests.
 
 ### 7.2. Server side
 
-On **server side**, Tapir Endpoints.create will be implemented by a ZIO effect, through the **zServerLogic** combinator.
+On the **server side**, Tapir `Endpoints.create` will be implemented by a ZIO effect, through the **zServerLogic** combinator.
 
 ```scala
                                            // (1)
@@ -632,8 +593,10 @@ object PersonController {
 
 ```
 
+Here are the important bits:
+
 * **(1)** Dependency Injection.
-* **(2)** Controller implementation, where json codec are transparently handled by Tapir
+* **(2)** Controller implementation, where json codec are transparently handled by Tapir:
   * `p: Person` is the payload of the request as describe in the endpoint definition.
   * `personService.register(p)` is the ZIO effect that will register the person.
 * **(3)** List of endpoints that will be served by the controller.
@@ -642,26 +605,21 @@ object PersonController {
   * **(4b)** Instantiate the PersonController with the PersonService.
 
 
-Everything is IO, URIO[PersonService, PersonController] is an IO that needs a PersonService and will produce a PersonController and cannot fail.
+Everything is described as ZIO effects. `URIO[PersonService, PersonController]` is a ZIO that needs a PersonService and will produce a PersonController and cannot fail.
 
 > **URIO** is a type alias for a ZIO that cannot fail:
 >
->  type **URIO**[R, A] = ZIO[R, **Nothing**, A]`
+>  `type URIO[R, A] = ZIO[R, Nothing, A]`
 
-**zServerLogic** is part of the Tapir ZIO support, and bridges a ZIO in the Rest API.
-
-**zServerLogic** is a combinator that will transform a ZIO effect into a server logic, it will handle the error and the success case.
+**zServerLogic** is part of the Tapir ZIO support, and bridges a ZIO in the Rest API. Itis a combinator that will transform a ZIO effect into a server logic, it will handle the error and the success case.
 
 Tapir provides a [lot of combinators](https://tapir.softwaremill.com/en/latest/server/logic.html#other-server-logic-variants) to handle the ZIO effect, Cats Effect or Future.
 
-
-
 ### 7.3. Client side
 
-On **client side**, Tapir will allow to interact as client, it will leverage the same endpoint definition to generate the client side code.
+On the **client side**, Tapir will allow to interact as client, it will leverage the same endpoint definition to generate the client side code.
 
 It will smartly generate the client side code, that will be used in the Laminar UI.
-
 
 ## 8. Laminar 
 
@@ -694,7 +652,7 @@ Et voilà, a form is derived from the case class, and can be rendered in the UI.
 
 ### 8.1 Http client, unsecured and secured
 
-On **client side**, Tapir will allow to interact as client, is a very straightforward way: 
+On the **client side**, Tapir will allow to interact as client, is a very straightforward way: 
 
 ```scala
  Button(
@@ -704,32 +662,31 @@ On **client side**, Tapir will allow to interact as client, is a very straightfo
       .createEndpoint(
         personVar.now()  // (2a)
       )                  // (2b)
-      .emitTo(           // (3b)
+      .emitTo(           // (3a)
         userBus          // (3b)
       ) 
   }
 )
 ```
 
-
-* **(1)** from an Laminar UI event
+We have:
+* **(1)** the handling of a Laminar UI event
 * **(2)** a HTTP endpoint
   * **(2a)** reads the current value of a Laminar Var
   * **(2b)** turns into ZIO effect to handle the HTTP request
-* **(3)** this effect
-  * **(3a)** this effect will run
-  * **(3B)** its result is consumed by the Laminar UI
+* **(3)** an effect that, when evaluated
+  * **(3a)** will push its value to an event bus
+  * **(3B)** which is consumed by the Laminar UI
 
-
-Whoah, this is a lot of magic in a single line.
+This is a lot of magic in a single line!
 
 In the same way that on server side **zServerLogic** bridges ZIO in Tapir through an extension method, on client side two extension methods are used:
 * From laminar to ZIO
-* From ZIO back to Laminar.
+* From ZIO back to Laminar
 
-This is the power of Scala3 extension methods, that allows to extend existing classes with new methods.
+This is the power of Scala 3 extension methods, that allows to extend existing classes with new methods.
 
-A first extension, turns this endpoint value to a function ( def **apply …** ):
+A first extension, turns this endpoint value into a function:
 
 ```scala
 extension [I, E <: Throwable, O](endpoint: Endpoint[Unit, I, E, O, Any])
@@ -743,24 +700,23 @@ extension [I, E <: Throwable, O](endpoint: Endpoint[Unit, I, E, O, Any])
         .flatMap(_.endpointRequestZIO(endpoint)(payload))
 ```
 
-Function, when called that turns this enhanced endpoint to a function that:
+When called, this turns the enhanced endpoint to a function that:
 
-* take arbitrary input **I**
-* use a provided  **BackendClient** (with ZIO.service[**BackendClient**])
-* to produce a ZIO effect producing an arbitrary output **O**
+* can take arbitrary input **I**
+* can use a provided  **BackendClient**
+* and will produce a ZIO effect producing an arbitrary output **O**
 
 Simply said, with this extension in scope, now createEndpoint can be used as a function:
 
 ```scala
-def createEndpoint[I, O]( payload: I) : RIO[BackendClient, O]
+def createEndpoint[I, O](payload: I): RIO[BackendClient, O]
 ```
 
 > Note: **RIO** is just a type alias where error are Throwable:
 >
->  type **RIO**[R, A]= ZIO[R, **Throwable**, A] 
+> `type RIO[R, A]= ZIO[R, Throwable, A]` 
 
-
-This effect, needs a BackendClient to run (ZIO.service[BackendClient]).
+This effect needs a BackendClient to run - look at `ZIO.service[BackendClient]`.
 
 This is what the second extension will satisfy in a glimpse of Scala:
 
@@ -806,20 +762,20 @@ object BackendClientLive:
   }
 ```
 
-In short term, in this one liner we:
+In short term, in this one-liner we:
 
 * open a channel to a Rest API in a full type safe manner
 * serialised the case class to a JSON payload
 * wait for the result.
-* piped the deserialised result in UI.
+* piped the deserialized result in UI.
 
 ### 8.2. Secured Endpoint
 
 In the same way, a secured client can be defined, that will handle the authentication and the authorization.
 
-Of course it will be a bit more complex, but the same principles will apply.
+Of course, it will be a bit more complex, but the same principles will apply.
 
-Tapir do distinguish the secured endpoints from the unsecured ones, and will generate the client side code accordingly.
+Tapir does distinguish the secured endpoints from the unsecured ones, and will generate the client side code accordingly.
 
 For example, a secured endpoint will be defined like this:
 
@@ -896,15 +852,15 @@ class PersonController private (personService: PersonService, jwtService: JWTSer
 ```
 
 * **(1)** The controller `extends SecuredBaseController` with the token extractor function: `String => Task[UserID]`.
-* **(2)** The curryied function that will handle the request and the response, and that will depend on the principal.
+* **(2)** The curried function that will handle the request and the response, and that will depend on the principal.
 
-On liner again.
+One-liners again!
 
 #### 8.2.2. Secured Client
 
-On client side, the secured client will be defined with an extension method that will handle the authentication. Im my humble opinion, this is the most impressive part of this article.
+On client side, the secured client will be defined with an extension method that will handle the authentication. Not to brag, but I believe this is the most impressive part of this article (_Daniel here: I agree!_)
 
-Let see how the secured client will be used in the UI:
+Let's see how the secured client will be used in the UI:
 
 ```scala
 val userBus = new EventBus[(User, Option[Pet])]
@@ -928,7 +884,7 @@ def apply() = div(
  this is because the token is handled another extension method that is triggered by the secured endpoint.
 * **(5)** Display the user profile.
 
-The attentive reader will notice that the secured endpoint is called without any token, just like the unsecured endpoint. How is it possible ?
+The attentive reader will notice that the secured endpoint is called without any token, just like the unsecured endpoint. How is it possible?
 
 This is because the token is handled by the extension method that is triggered by the secured endpoint.
 
@@ -950,17 +906,17 @@ extension [I, E <: Throwable, O](endpoint: Endpoint[String, I, E, O, Any])    //
 * **(1)** extension method that will enrich the secured endpoint with the token handling.
 * **(2)** UserToken is a type that will hold the token (generic), and that will be provided by the session.
 * **(3)** The session is a class that will provide access to the UserToken.
-* **(4)** The `securedEndpointRequestZIO`is the methhod will handle the token through the session and local storage.
+* **(4)** The `securedEndpointRequestZIO`is the method which will handle the token through the session and local storage.
 
 ### 8.3. Take away on Http client
 
 With this extension methods, secured endpoints can be called in the same way as unsecured endpoints, and the token will be handled in a full type safe manner.
 
-This part an [external library](https://github.com/cheleb/zio-laminar-tapir).
+This is part of an [external library](https://github.com/cheleb/zio-laminar-tapir).
 
 ## All together
 
-Here is the [full code](https://github.com/cheleb/zio-laminar-demo/blob/master/modules/client/src/main/scala/com/example/ziolaminardemo/app/demos/scalariform/ScalariformDemoPage.scala#L32) of the page that will create a Person and display the registred User in the UI.
+Here is the [full code](https://github.com/cheleb/zio-laminar-demo/blob/master/modules/client/src/main/scala/com/example/ziolaminardemo/app/demos/scalariform/ScalariformDemoPage.scala#L32) of the page that will create a Person and display the registered User in the UI.
 
 ```scala
 package com.example.ziolaminardemo.app.demos.scalariform
@@ -1023,18 +979,13 @@ object ScalariformDemoPage:
 
 This is a lot of magic in a single page.
 
+## Interacting with JavaScript ecosystem
 
-# Interacting with JavaScript ecosystem
+We can leverage the JavaScript ecosystem in a type safe manner, either by using a Scala.js façade or by using the JavaScript API directly.
 
-We can leverage the JavaScript ecosystem in a type safe manner. 
+To illustrate this, we are using a Laminar binding to a SAP UI5 component. But more interestingly, you will find in the project a façade to the [Chart.js](https://www.chartjs.org/) library.
 
-Either by using Scala.js facade or by using the JavaScript API directly.
-
-To illustrate this,  we are using a Laminar binding to a SAP UI5 component.
-
-But more interestingly, you will find in the project a facade to the [Chart.js](https://www.chartjs.org/) library.
-
-This being is generated by [Scalablytyped](https://scalablytyped.org/), a tool that will generate Scala.js facade from TypeScript definition.
+This is generated by [ScalablyTyped](https://scalablytyped.org/), a tool that will generate Scala.js façades from TypeScript definitions.
 
 This sample is extracted from Sébastien Doeraene demonstration: [Getting started with Scala.js, Laminar and ScalablyTyped](https://www.youtube.com/watch?v=UePrOa_1Am8)
 
@@ -1062,14 +1013,13 @@ Some configuration, devDependencies point to TypeScript whereas runtime dependen
 In this example Chart.js bindings are generated from the TypeScript definition and fully accessible from ScalaJS at compile time, whereas the chart.js will be used at runtime.
 Generated classes are pushed in your local (ivy) repo, hence generated only once.
 
-Notice, this package.json is not the application one, because I want to limit this binding generation to strict necessary.
+Notice, this package.json is not the application one, because I want to limit this binding generation to strictly necessary.
 
 Then you can refer to TypeScript library very easily, see [here](https://github.com/cheleb/zio-laminar-demo/blob/master/modules/client/src/main/scala/com/example/ziolaminardemo/app/demos/ScalablytypedDemoPage.scala#L103).
 
+## Short conclusion
 
-# Short conclusion
-
-This is a very simple example, but it shows how ZIO, Laminar and Tapir can be combined to build a full stack webapp. 
+This is a very simple example, but it shows how ZIO, Laminar and Tapir can be combined to build a full stack web app. 
 
 * ZIO provides a type safe way to handle effects, and to build a full stack application both on the client and the server side.
 
@@ -1078,27 +1028,25 @@ This is a very simple example, but it shows how ZIO, Laminar and Tapir can be co
 * Tapir provides a type safe way to define, expose and consume API endpoints.
 
 
-A powerful combination, that allows to build a full stack webapp in a type safe manner. And in the mean time we can leverage the JavaScript ecosystem, without compromising type safety, architecture and scalability of the application.
+A powerful combination, that allows to build a full stack web app in a type safe manner. And in the meantime we can leverage the JavaScript ecosystem, without compromising type safety, architecture and scalability of the application.
 
-
-# Roadmap
+## Further improvements
 
 The [g8 starter](https://github.com/cheleb/zio-scalajs-laminar.g8) project needs:
 
 * better error handling
-* splitting the JavaScript into multiple files
-
- and maybe an example of WASM now that Scala.js has a [first full implementation of WasmGC](https://github.com/scala-js/scala-js/pull/4988).
+* splitting the JavaScript into multiple files 
+* and maybe an example of WASM now that Scala.js has a [first full implementation of WasmGC](https://github.com/scala-js/scala-js/pull/4988).
  
- This is the subject of a future article.
+This is the subject of a future article.
 
-# In the end
+## In the end
 
-Hope you appreciate, this introduction.
+Hope you liked this introduction.
 
-Many more patterns to discover in the [ZIO rite of passage](https://rockthejvm.com/p/zio-rite-of-passage).
+Many more patterns to discover in the [ZIO rite of passage](https://rockthejvm.com/p/zio-rite-of-passage) course.
 
-I really love the combo ZIO, Laminar and Tapir, ScalaJs is able to leverage both Scala and JS ecosystem to build fully type safe, reactive webapp with a minimum of boiler plate, thanks to Scala3 new derivation and extension mechanism.
+I really love how the combo of ZIO, Laminar and Tapir, ScalaJs is able to leverage both Scala and JS ecosystem to build fully type-safe, reactive web app with a minimum of boilerplate, thanks to Scala 3 new derivation and extension mechanism.
 
 Cheers, and happy coding.
 
@@ -1106,10 +1054,10 @@ References:
 * Rock the JVM: [https://rockthejvm.com](https://rockthejvm.com)
 * Laminar: [https://laminar.dev](https://laminar.dev)
 * ZIO: [https://zio.dev](https://zio.dev)
-* Scalablytyped demo: [https://www.youtube.com/watch?v=UePrOa_1Am8](https://www.youtube.com/watch?v=UePrOa_1Am8)
+* ScalablyTyped demo: [https://www.youtube.com/watch?v=UePrOa_1Am8](https://www.youtube.com/watch?v=UePrOa_1Am8)
 * UI5 Laminar bindings: [https://github.com/sherpal/LaminarSAPUI5Bindings](https://github.com/sherpal/LaminarSAPUI5Bindings)
 * HTML Form derivation: [https://cheleb.github.io/laminar-form-derivation/docs/index.html](https://cheleb.github.io/laminar-form-derivation/docs/index.html)
 * ZIO Laminar Tapir: [https://github.com/cheleb/zio-laminar-tapir](https://github.com/cheleb/zio-laminar-tapir)
 
-All the g8 scafolding code is available on [github zio-scalajs-laminar.g8](https://github.com/cheleb/zio-scalajs-laminar.g8)
+All the g8 scaffolding code is available on [github zio-scalajs-laminar.g8](https://github.com/cheleb/zio-scalajs-laminar.g8)
 
