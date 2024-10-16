@@ -77,6 +77,7 @@ We don't need to implement the actual interaction with the GitHub API. So, we'll
 interface FindUserByIdPort {
   User findUser(UserId userId) throws InterruptedException;
 }
+
 interface FindRepositoriesByUserIdPort {
   List<Repository> findRepositories(UserId userId) throws InterruptedException;
 }
@@ -85,7 +86,7 @@ interface FindRepositoriesByUserIdPort {
 The implementations of these interfaces are straightforward. They simply return fixed information and simulate a delay in the response. Here is the implementation of both the interfaces:
 
 ```java
-static class GitHubRepository implements FindUserByIdPort, FindRepositoriesByUserIdPort {
+class GitHubRepository implements FindUserByIdPort, FindRepositoriesByUserIdPort {
   @Override
   public User findUser(UserId userId) throws InterruptedException {
     LOGGER.info("Finding user with id '{}'", userId);
@@ -121,7 +122,8 @@ Now that we have our clients, we can start writing the code to retrieve the info
 interface FindGitHubUserUseCase {
   GitHubUser findGitHubUser(UserId userId) throws InterruptedException;
 }
-static class FindGitHubUserSequentialService implements FindGitHubUserUseCase {
+
+class FindGitHubUserSequentialService implements FindGitHubUserUseCase {
   private final FindUserByIdPort findUserByIdPort;
   private final FindRepositoriesByUserIdPort findRepositoriesByUserIdPort;
   public FindGitHubUserSequentialService(
@@ -436,7 +438,7 @@ Exception in thread "main" java.lang.IllegalStateException: Result is unavailabl
 
 Well, the output looks very promising. The second task was stopped (canceled) as soon as the first one went in error. The parent task was not stop and a `java.lang.IllegalStateException` exception was thrown when we tried to get the result from the failed computation. So, we solved one of the problems of unstructured concurrency, thread leaks and resources starvation. A good step forward.
 
-However, the thrown exception was not the original exception thrown by the child computation in error. We completely lost the original cause of error. However, we can do better. The `StructuredTaskScope.ShutdownOnSuccess` scope adds a method to the available ones, `throwIfFailed`. As the documentation said, the method throws if any of the subtasks failed. The method throws an `java.util.concurrent.ExecutionException` exception set with the original exception as its cause. If no subtask failed, the method returns normally.
+However, the thrown exception was not the original exception thrown by the child computation in error. We completely lost the original cause of error. However, we can do better. The `StructuredTaskScope.ShutdownOnFailure` scope adds a method to the available ones, `throwIfFailed`. As the documentation said, the method throws if any of the subtasks failed. The method throws an `java.util.concurrent.ExecutionException` exception set with the original exception as its cause. If no subtask failed, the method returns normally.
 
 We change first our code to see the new behavior in action:
 
@@ -524,3 +526,95 @@ scope.join().throwIfFailed(throwable -> {
   else throw (Error) throwable; 
 });
 ```
+
+It's easy to use the `StructuredTaskScope.ShutdownOnFailure` policy to implement an structured concurrency primitive that is available in all the library implementing some form of concurrency: We're talking about the `par` function. The `par` function takes two tasks and returns the result of both, or it stops if any of the two computation fails. For who is familiar with Scala Cats Effects or ZIO libraries, the `par` function is a common primitive. Here is the code:
+
+```java
+record Pair<T1, T2>(T1 first, T2 second) {}
+
+static <T1, T2> Pair<T1, T2> par(Callable<T1> first, Callable<T2> second)
+    throws InterruptedException, ExecutionException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var firstTask = scope.fork(first);
+    var secondTask = scope.fork(second);
+    scope.join().throwIfFailed();
+    return new Pair<>(firstTask.get(), secondTask.get());
+  }
+}
+```
+
+If you have noticed, the above code is exactly what we did in the `findGitHubUser` method. We can now refactor the method to use the `par` function:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) 
+    throws ExecutionException, InterruptedException {
+  var result =
+      par(
+          () -> findUserByIdPort.findUser(userId),
+          () -> findRepositoriesByUserIdPort.findRepositories(userId)
+      );
+  return new GitHubUser(result.first(), result.second());
+}
+```
+
+The `StructuredTaskScope.ShutdownOnFailure` is not the only policy available. The JDK comes with another built-in policy, the `StructuredTaskScope.ShutdownOnSuccess`. The policy is similar to the `ShutdownOnFailure` one, but it stops the computation at first subtask that completes successfully. Let's build an example to analyze the function in detail.
+
+Imagine that we noticed that retrieving all the repositories of a user is a very expensive operation. Moreover, the repositories of a user change very rarely. So, we decide to build a cached version of the `findRepositories` method. First, we need to define an implementation of the port that uses a cache to store the result of the computation. Here is the code:
+
+```java
+class FindRepositoriesByUserIdCache implements FindRepositoriesByUserIdPort {
+    
+  private final Map<UserId, List<Repository>> cache = new HashMap<>();
+  
+  @Override
+  public List<Repository> findRepositories(UserId userId) throws InterruptedException {
+    // Simulates access to a distributed cache (Redis?)
+    delay(Duration.ofMillis(100L));
+    final List<Repository> repositories = cache.get(userId);
+    if (repositories == null) {
+      LOGGER.info("No cached repositories found for user with id '{}'", userId);
+      throw new NoSuchElementException(
+          "No cached repositories found for user with id '%s'".formatted(userId));
+    }
+    return repositories;
+  }
+  
+  public void addToCache(UserId userId, List<Repository> repositories)
+      throws InterruptedException {
+    // Simulates access to a distributed cache (Redis?)
+    delay(Duration.ofMillis(100L));
+    cache.put(userId, repositories);
+  }
+}
+```
+
+As you can see, we're simulating a distributed cache like Redis with an in-memory map and a delay to simulate the network latency. Moreover, we're not paying attention to concurrent access to the map since the main topic of the article is not the concurrent access of data structures. Please, don't use the above code in production. Moreover, the behaviour in case the repositories are not found in the cache is a bit rude. The method throws a `NoSuchElementException` exception. However, it'll be clear in a moment why we did it.
+
+Now, we can implement a pimped version of our original `findRepositories` method. It'll spawn two tasks: one to retrieve the repositories from the cache and one to retrieve the repositories from the GitHub API. The first task that completes successfully will stop the computation. Here is the code:
+
+```java
+static class GitHubCachedRepository implements FindRepositoriesByUserIdPort {
+    
+  private final FindRepositoriesByUserIdPort repository = new GitHubRepository();
+  private final FindRepositoriesByUserIdCache cache = new FindRepositoriesByUserIdCache();
+  
+  @Override
+  public List<Repository> findRepositories(UserId userId)
+      throws InterruptedException, ExecutionException {
+    try (var scope = new StructuredTaskScope.ShutdownOnSuccess<List<Repository>>()) {
+      scope.fork(() -> cache.findRepositories(userId));
+      scope.fork(
+          () -> {
+            final List<Repository> repositories = repository.findRepositories(userId);
+            cache.addToCache(userId, repositories);
+            return repositories;
+          });
+      return scope.join().result();
+    }
+  }
+}
+```
+
+
+
