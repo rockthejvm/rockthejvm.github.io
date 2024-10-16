@@ -566,6 +566,16 @@ Imagine that we noticed that retrieving all the repositories of a user is a very
 class FindRepositoriesByUserIdCache implements FindRepositoriesByUserIdPort {
     
   private final Map<UserId, List<Repository>> cache = new HashMap<>();
+
+  public FindRepositoriesByUserIdCache() {
+    cache.put(
+          new UserId(42L),
+          List.of(
+              new Repository(
+                  "rockthejvm.github.io",
+                  Visibility.PUBLIC,
+                  URI.create("https://github.com/rockthejvm/rockthejvm.github.io"))));
+  }
   
   @Override
   public List<Repository> findRepositories(UserId userId) throws InterruptedException {
@@ -590,6 +600,8 @@ class FindRepositoriesByUserIdCache implements FindRepositoriesByUserIdPort {
 ```
 
 As you can see, we're simulating a distributed cache like Redis with an in-memory map and a delay to simulate the network latency. Moreover, we're not paying attention to concurrent access to the map since the main topic of the article is not the concurrent access of data structures. Please, don't use the above code in production. Moreover, the behaviour in case the repositories are not found in the cache is a bit rude. The method throws a `NoSuchElementException` exception. However, it'll be clear in a moment why we did it.
+
+At startup time, the only cached repositories are those of the user with `UserId(42L)`.
 
 Now, we can implement a pimped version of our original `findRepositories` method. It'll spawn two tasks: one to retrieve the repositories from the cache and one to retrieve the repositories from the GitHub API. The first task that completes successfully will stop the computation. Here is the code:
 
@@ -620,6 +632,54 @@ static class GitHubCachedRepository implements FindRepositoriesByUserIdPort {
     }
   }
 }
+```
+
+We used the `StructuredTaskScope.ShutdownOnSuccess` policy to implement our new use case. Let's spot the differences with the previous policy we used. First, the type of the scope is `StructuredTaskScope.ShutdownOnSuccess<List<Repository>>`. The type parameter is the type of the result of the computation. Then, we didn't give much attention to the `Subtask` objects returned by the `fork` method. In fact, as we can see, we call the `result` method on the `scope` object to retrieve the result of the computation. In fact, we can't know which of the two tasks completed successfully first. The `result` method returns the result of the first task that completed successfully.
+
+Let's test the new implementation. We can use the `main` method to do it:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  final FindRepositoriesByUserIdCache cache = new FindRepositoriesByUserIdCache();
+  final FindRepositoriesByUserIdPort gitHubCachedRepository =
+      new GitHubCachedRepository(gitHubRepository, cache);
+  final List<Repository> repositories = gitHubCachedRepository.findRepositories(new UserId(1L));
+  
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+We expect that the `cache` to throw an exception since the repositories of the user with `UserId(1L)` are not cached, and the `repository` to complete successfully the execution. As we said, the `StructuredTaskScope.ShutdownOnSuccess` scope waits for the first task that completes successfully. The output of the execution is in fact the following:
+
+```
+09:43:21.679 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+09:43:21.779 [virtual-20] INFO GitHubApp -- No cached repositories found for user with id 'UserId[value=1]'
+09:43:22.702 [virtual-22] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+09:43:22.812 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
+```
+
+As we can see, the `cache` task throws an exception, and the `repository` task completes successfully. The computation stops, and the result is the one we expect. 
+
+Now, we can simulate that the `cache` completes successfully, finding the user's repositories in-memory. As you might remember, the repositories of the user with `UserId(42L)` are put in cache at startup time. Let's change our `main` method to test the new scenario:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  final FindRepositoriesByUserIdCache cache = new FindRepositoriesByUserIdCache();
+  final FindRepositoriesByUserIdPort gitHubCachedRepository =
+          new GitHubCachedRepository(gitHubRepository, cache);
+
+  final List<Repository> repositories = gitHubCachedRepository.findRepositories(new UserId(42L));
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+The output of the execution is the following:
+
+```
+21:36:32.901 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=42]'
+21:36:33.014 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=rockthejvm.github.io, visibility=PUBLIC, uri=https://github.com/rockthejvm/rockthejvm.github.io]]
 ```
 
 
