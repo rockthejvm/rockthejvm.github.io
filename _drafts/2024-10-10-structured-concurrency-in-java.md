@@ -596,8 +596,14 @@ Now, we can implement a pimped version of our original `findRepositories` method
 ```java
 static class GitHubCachedRepository implements FindRepositoriesByUserIdPort {
     
-  private final FindRepositoriesByUserIdPort repository = new GitHubRepository();
-  private final FindRepositoriesByUserIdCache cache = new FindRepositoriesByUserIdCache();
+  private final FindRepositoriesByUserIdPort repository;
+  private final FindRepositoriesByUserIdCache cache;
+
+  GitHubCachedRepository(
+      FindRepositoriesByUserIdPort repository, FindRepositoriesByUserIdCache cache) {
+    this.repository = repository;
+    this.cache = cache;
+  }
   
   @Override
   public List<Repository> findRepositories(UserId userId)
