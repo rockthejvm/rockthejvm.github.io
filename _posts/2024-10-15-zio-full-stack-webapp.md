@@ -170,7 +170,7 @@ Thanks to the power of SBT and multi-module support, it easy to compile and pack
 
 In VS code you can see the modules view:
 
-```xml
+
 <table>
   <tr>
     <td>
@@ -201,7 +201,7 @@ In VS code you can see the modules view:
   </td>
   </tr>
 </table>
-```
+
 
 Sometimes we need to [generate some static files](https://github.com/cheleb/zio-laminar-demo/blob/master/build.sbt#L63), like the index.html of the server module. This is done with SBT only when the server module is build.
 
@@ -400,7 +400,7 @@ In this example, the PersonService will check if the person is older than 18 bef
 
 > **Task** is a type alias for a ZIO that can fail with a Throwable:
 >
->  `type **Task**[A] = ZIO[Any, **Throwable**, A]`
+>  type **Task**[A] = ZIO[Any, **Throwable**, A]
 
 
 ```scala
@@ -609,7 +609,7 @@ Everything is described as ZIO effects. `URIO[PersonService, PersonController]` 
 
 > **URIO** is a type alias for a ZIO that cannot fail:
 >
->  `type URIO[R, A] = ZIO[R, Nothing, A]`
+>  type **URIO**[R, A] = ZIO[R, **Nothing**, A]
 
 **zServerLogic** is part of the Tapir ZIO support, and bridges a ZIO in the Rest API. Itis a combinator that will transform a ZIO effect into a server logic, it will handle the error and the success case.
 
@@ -714,7 +714,7 @@ def createEndpoint[I, O](payload: I): RIO[BackendClient, O]
 
 > Note: **RIO** is just a type alias where error are Throwable:
 >
-> `type RIO[R, A]= ZIO[R, Throwable, A]` 
+> type **RIO**[R, A]= ZIO[R, **Throwable**, A] 
 
 This effect needs a BackendClient to run - look at `ZIO.service[BackendClient]`.
 
