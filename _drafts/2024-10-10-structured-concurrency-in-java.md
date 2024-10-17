@@ -661,7 +661,7 @@ We expect that the `cache` to throw an exception since the repositories of the u
 
 As we can see, the `cache` task throws an exception, and the `repository` task completes successfully. The computation stops, and the result is the one we expect. 
 
-Now, we can simulate that the `cache` completes successfully, finding the user's repositories in-memory. As you might remember, the repositories of the user with `UserId(42L)` are put in cache at startup time. Let's change our `main` method to test the new scenario:
+Now, we can simulate that the `cache` completes successfully, finding the user's repositories in-memory. As you might remember, the repositories of the user with `UserId(42L` are put in cache at startup time. Let's change our `main` method to test the new scenario:
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
@@ -682,5 +682,45 @@ The output of the execution is the following:
 21:36:33.014 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=rockthejvm.github.io, visibility=PUBLIC, uri=https://github.com/rockthejvm/rockthejvm.github.io]]
 ```
 
+As we can see, the computation that doesn't use the cache started. However, since the computation that uses the cache completed successfully, the other computation in canceled to avoid wasting resources. We've achieved our goal. 
+
+What if both tasks throw an exception? We can see it in action by changing the `findRepositories` of the `GitHubRepository` class to throw an exception. Here is the code:
+
+```java
+@Override
+@Override
+public List<Repository> findRepositories(UserId userId) throws InterruptedException {
+  LOGGER.info("Finding repositories for user with id '{}'", userId);
+  delay(Duration.ofSeconds(1L));
+  throw new RuntimeException("Socket timeout");
+}
+```
+
+Now, we need to switch the user using during the search to let the `cache` crash again. 
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  final FindRepositoriesByUserIdCache cache = new FindRepositoriesByUserIdCache();
+  final FindRepositoriesByUserIdPort gitHubCachedRepository =
+      new GitHubCachedRepository(gitHubRepository, cache);
+  final List<Repository> repositories = gitHubCachedRepository.findRepositories(new UserId(1L));
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+There we go! Let's execute the code:
+
+```
+16:18:21.615 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+16:18:21.714 [virtual-20] INFO GitHubApp -- No cached repositories found for user with id 'UserId[value=1]'
+Exception in thread "main" java.util.concurrent.ExecutionException: java.util.NoSuchElementException: No cached repositories found for user with id 'UserId[value=1]'
+	at java.base/java.util.concurrent.StructuredTaskScope$ShutdownOnSuccess.result(StructuredTaskScope.java:1152)
+	at java.base/java.util.concurrent.StructuredTaskScope$ShutdownOnSuccess.result(StructuredTaskScope.java:1116)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$GitHubCachedRepository.findRepositories(GitHubApp.java:104)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:257)
+```
+
+As we can see, the log reports the exception thrown by the `cache` task, the first one that was thrown. The second exception, the `RuntimeException("Socket timeout")` was caught by the `scope`, but it was suppressed. In fact, the `StructuredTaskScope.ShutdownOnSuccess` rethrows the first exception thrown if all the tasks throw an exception.
 
 
