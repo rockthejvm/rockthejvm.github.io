@@ -766,7 +766,34 @@ Let's do it, and let's deepen our knowledge of structured concurrency internal m
 
 ## 5. Implementing a custom policy
 
-TODO
+As we said, we want to implement a structured concurrency policy that mimic the behaviour of the `race` function. The `race` function should execute two tasks concurrently and return the result of the first task that completes, both if successful or not. Let's do it one step at time. 
 
+Implementing a custom policy always start extending the `StructuredTaskScope` type. In fact, the base class implements all the mechanisms to handle the synchronization of the forked tasks. So, first of all, we need to extend the `StructuredTaskScope` type:
+
+```java
+class ShutdownOnResult<T> extends StructuredTaskScope<T> {
+    // TODO
+}
+```
+
+We want our policy to return a result of type `T`, similarly to what is done by the `ShutdownOnSuccess<T>` type. Then, we made the new policy generic on `T`. The `StructuredTaskScope` is a concrete class, there is no abstract method to implement. The documentation tells us that we need to override the `handleComplete` method:
+
+```java
+static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
+  
+  @Override
+  protected void handleComplete(Subtask<? extends T> subtask) {
+    // TODO
+  }
+}
+```
+
+The method takes a `Subtask<T>` in input. In fact, the scope calls the `handleComplete` every time a subtask forked by the scope completes. The input subtask is the one that completes.
+
+Now, we can extract the result of the computation from the subtask. The `Subtask` type exposes two methods. The first is the `T get()` method we used so far and that returns the computed value in case of success. If you remember, the `get` methods comes from the `Supplier<T>` interface that the `Subtask<T>` implements. The second method is the `Throwable exception()`, which returns the exception thrown by the computation in case of failure.
+
+However, as we already saw in the previous examples, we can't call `get` if the computation failed otherwise the method will throw an `IllegalStateException`. On the other hand, if the computation succeeded, we can't call the `exception` method, which will have the same behavior. 
+
+We need a way to know if the computation completed successfully or not. The `Subtask` type comes with the method `State state()` that returns the state of the computation as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
 
 
