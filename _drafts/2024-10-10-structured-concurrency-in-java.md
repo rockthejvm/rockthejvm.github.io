@@ -760,5 +760,13 @@ public List<Repository> findRepositories(UserId userId)
 }
 ```
 
+If you're familiar with concurrency primitives, you might have asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the first task that completes, both if successful or not. Both ZIO and Cats Effects libraries provide such a primitive, and it is the building block to create the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't provide a way to implement the `race` function directly. We need to create our own policy to implement it.
+
+Let's do it, and let's deepen our knowledge of structured concurrency internal mechanisms in the meantime.
+
+## 5. Implementing a custom policy
+
+TODO
+
 
 
