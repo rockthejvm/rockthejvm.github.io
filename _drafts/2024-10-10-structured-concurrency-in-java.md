@@ -723,4 +723,42 @@ Exception in thread "main" java.util.concurrent.ExecutionException: java.util.No
 
 As we can see, the log reports the exception thrown by the `cache` task, the first one that was thrown. The second exception, the `RuntimeException("Socket timeout")` was caught by the `scope`, but it was suppressed. In fact, the `StructuredTaskScope.ShutdownOnSuccess` rethrows the first exception thrown if all the tasks throw an exception.
 
+We can remap the exception thrown by the `result` method as we did for the `throwIfFailed` method. The `result` method comes with an override that takes a function as input to map the exception. Here is the code:
+
+```java
+scope.join().result(Function.identity());
+```
+
+Clearly, the same warnings or remapping the exceptions we gave for the `throwIfFailed` method apply to the `result` method.
+
+We can use the `StructuredTaskScope.ShutdownOnSuccess` to implement another concurrency primitive present in other well-known libraries such as ZIO and Softwaremill Ox: The `raceAll` function. The `raceAll` function takes two tasks and returns the result of the first task that completes successfully. If both tasks throw an exception, the first exception thrown is rethrown. Here is how we can implement it in Java using the `StructuredTaskScope.ShutdownOnSuccess` policy:
+
+```java
+static <T> T raceAll(Callable<T> first, Callable<T> second)
+    throws InterruptedException, ExecutionException {
+  try (var scope = new StructuredTaskScope.ShutdownOnSuccess<T>()) {
+    scope.fork(first);
+    scope.fork(second);
+    return scope.join().result();
+  }
+}
+```
+
+Let's rewrite the `GitHubCachedRepository.findRepositories` method using the `raceAll` function we just implemented:
+
+```java
+@Override
+public List<Repository> findRepositories(UserId userId)
+    throws InterruptedException, ExecutionException {
+  return raceAll(
+      () -> cache.findRepositories(userId),
+      () -> {
+        final List<Repository> repositories = repository.findRepositories(userId);
+        cache.addToCache(userId, repositories);
+        return repositories;
+      });
+}
+```
+
+
 
