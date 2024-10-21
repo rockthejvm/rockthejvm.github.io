@@ -796,4 +796,69 @@ However, as we already saw in the previous examples, we can't call `get` if the 
 
 We need a way to know if the computation completed successfully or not. The `Subtask` type comes with the method `State state()` that returns the state of the computation as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
 
+A subtask will be in the `SUCCESS` state after the computation completed successfully. The `get` method will return the result of the computation. A subtask will be in the `FAILED` state after the computation completed with an exception. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example if we call the `get` method before the having `join` the scope or if the subtask was canceled (we'll see in the next sections what does it means).
+
+We need to use some state that can store the result of the first successful exception or the exception thrown by the first task that failed:
+
+```java
+static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
+  private T firstResult;
+  private Throwable firstException;
+
+  @Override
+  protected void handleComplete(Subtask<? extends T> subtask) {
+    // TODO
+  }
+}
+```
+
+We need to synchronize the access to the state since the `handleComplete` method is called concurrently by the forked tasks. There are a million way to do it. The only one we don't want to use is calling a `synchronized` block. [As you might remember](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/#6-pinned-virtual-threads), virtual threads don't work well with `synchronized` blocks, since the carrier thread is pinned to the virtual thread and so it blocks waiting for the lock to be released. 
+
+We can use a `ReentrantLock` to synchronize the access to the state instead, which doesn't suffer of the above problem:
+
+```java
+static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
+  private final Lock lock = new ReentrantLock();
+  private T firstResult;
+  private Throwable firstException;
+
+  @Override
+  protected void handleComplete(Subtask<? extends T> subtask) {
+    // TODO
+  }
+```
+
+We want to synchronize the access to the state both in reading and writing. Probably, we can optimize further the access to the mutable state, but the aim of the article is to show how to implement a custom policy for structured concurrency. So, we'll keep the code simple:
+
+```java
+@Override
+protected void handleComplete(Subtask<? extends T> subtask) {
+  switch (subtask.state()) {
+    case FAILED -> {
+      lock.lock();
+      try {
+        if (firstException == null) {
+          firstException = subtask.exception();
+          shutdown();
+        }
+      } finally {
+        lock.unlock();
+      }
+    }
+    case SUCCESS -> {
+      lock.lock();
+      try {
+        if (firstResult == null) {
+          firstResult = subtask.get();
+          shutdown();
+        }
+      } finally {
+        lock.unlock();
+      }
+    }
+    case UNAVAILABLE -> super.handleComplete(subtask);
+  }
+}
+```
+
 
