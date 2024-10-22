@@ -861,4 +861,101 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 }
 ```
 
+As we can see, the `handleComplete` method just check the state of the given `subtask`, and set the proper variable representing our state accordingly. After that, the method calls the `shutdown` method. The `shutdown` method is a method of the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the next sections.
+
+Now that we have the first result or the first exception thrown by the forked tasks, we need a way to retrieve it. We can add a method to the `ShutdownOnResult` type that returns the result of the computation or throws the exception thrown by the computation. The method looks like a mix between the `ShutdownOnFailure.throwIfFailed` and the `ShutdownOnSuccess.result` methods, and we called it `resultOrThrow`:
+
+```java
+public T resultOrThrow() throws ExecutionException {
+  if (firstException != null) {
+    throw new ExecutionException(firstException);
+  }
+  return firstResult;
+}
+```
+
+Finally, the complete code of the `ShutdownOnResult` policy is the following:
+
+```java
+static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
+  private final Lock lock = new ReentrantLock();
+  private T firstResult;
+  private Throwable firstException;
+  
+  @Override
+  protected void handleComplete(Subtask<? extends T> subtask) {
+    switch (subtask.state()) {
+      case FAILED -> {
+        lock.lock();
+        try {
+          if (firstException == null) {
+            firstException = subtask.exception();
+            shutdown();
+          }
+        } finally {
+          lock.unlock();
+        }
+      }
+      case SUCCESS -> {
+        lock.lock();
+        try {
+          if (firstResult == null) {
+            firstResult = subtask.get();
+            shutdown();
+          }
+        } finally {
+          lock.unlock();
+        }
+      }
+      case UNAVAILABLE -> super.handleComplete(subtask);
+    }
+  }
+  
+  @Override
+  public ShutdownOnResult<T> join() throws InterruptedException {
+    super.join();
+    return this;
+  }
+  
+  public T resultOrThrow() throws ExecutionException {
+    if (firstException != null) {
+      throw new ExecutionException(firstException);
+    }
+    return firstResult;
+  }
+}
+```
+
+Let's try our new policy in action. For example, say that we want to retrieve the repositories of a user within 500 milliseconds or give up otherwise. Obviously, we want the computation to be properly shutdown in both cases, as we did in all the previous examples.
+
+TODO
+
+At the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that completes, both if successful or not. Here is the code:
+
+```java
+static <T> T race(Callable<T> first, Callable<T> second)
+    throws InterruptedException, ExecutionException {
+  try (var scope = new ShutdownOnResult<T>()) {
+    scope.fork(first);
+    scope.fork(second);
+    return scope.join().resultOrThrow();
+  }
+}
+```
+
+Once we have the `race` function, we can use it to implement the `timeout` function. The `timeout` function takes a task and a duration as input. The function returns the result of the task if the task completes within the given duration. If the task doesn't complete within the given duration, the function throws a `TimeoutException` exception. Here is the code:
+
+```java
+static <T> T timeout(Duration timeout, Callable<T> task)
+    throws InterruptedException, ExecutionException {
+  return race(
+      task,
+      () -> {
+        delay(timeout);
+        throw new TimeoutException("Timeout of %s reached".formatted(timeout));
+      });
+}
+```
+
+
 
