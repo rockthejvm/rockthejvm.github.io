@@ -926,11 +926,65 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
 }
 ```
 
-Let's try our new policy in action. For example, say that we want to retrieve the repositories of a user within 500 milliseconds or give up otherwise. Obviously, we want the computation to be properly shutdown in both cases, as we did in all the previous examples.
+Let's try our new policy in action. For example, say that we want to retrieve the repositories of a user within a given interval or give up otherwise. Obviously, we want the computation to be properly shutdown in both cases, as we did in all the previous examples. We can use the new and shiny `ShutdownOnResult` policy to implement the use case:
 
-TODO
+```java
+static class FindRepositoriesByUserIdWithTimeout {
+  final FindRepositoriesByUserIdPort delegate;
+  FindRepositoriesByUserIdWithTimeout(FindRepositoriesByUserIdPort delegate) {
+    this.delegate = delegate;
+  }
+  List<Repository> findRepositories(UserId userId, Duration timeout)
+      throws InterruptedException, ExecutionException {
+    try (var scope = new ShutdownOnResult<List<Repository>>()) {
+      scope.fork(() -> delegate.findRepositories(userId));
+      scope.fork(
+          () -> {
+            delay(timeout);
+            throw new TimeoutException("Timeout of %s reached".formatted(timeout));
+          });
+      return scope.join().resultOrThrow();
+    }
+  }
+}
+```
 
-At the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that completes, both if successful or not. Here is the code:
+We can now see the effect of the timeout trying to get the repositories of a user within 500 milliseconds:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  final FindRepositoriesByUserIdWithTimeout findRepositoriesWithTimeout =
+      new FindRepositoriesByUserIdWithTimeout(gitHubRepository);
+  final List<Repository> repositories =
+      findRepositoriesWithTimeout.findRepositories(new UserId(1L), Duration.ofMillis(500L));
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+As we might have expected, the output of the execution is the following, saying that the computation retrieving the repositories started but couldn't complete within the given interval, and it was canceled.
+
+```
+09:13:08.611 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+Exception in thread "main" java.util.concurrent.ExecutionException: java.util.concurrent.TimeoutException: Timeout of PT0.5S reached
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$ShutdownOnResult.resultOrThrow(GitHubApp.java:334)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindRepositoriesByUserIdWithTimeout.findRepositories(GitHubApp.java:64)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:365)
+Caused by: java.util.concurrent.TimeoutException: Timeout of PT0.5S reached
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindRepositoriesByUserIdWithTimeout.lambda$findRepositories$1(GitHubApp.java:62)
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.run(StructuredTaskScope.java:893)
+	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
+```
+
+Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves the repositories successfully:
+
+```
+09:15:42.083 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+09:15:43.100 [virtual-20] INFO GitHubApp -- Repositories found for user 'UserId[value=1]'
+09:15:43.122 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
+```
+
+Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that completes, both if successful or not. Here is the code:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -954,6 +1008,17 @@ static <T> T timeout(Duration timeout, Callable<T> task)
         delay(timeout);
         throw new TimeoutException("Timeout of %s reached".formatted(timeout));
       });
+}
+```
+
+We can rewrite the above example using the `timeout` function, thus avoiding the definition of the `FindRepositoriesByUserIdWithTimeout` class at all:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  final List<Repository> repositories =
+      timeout(Duration.ofMillis(500L), () -> gitHubRepository.findRepositories(new UserId(1L)));
+  LOGGER.info("GitHub user's repositories: {}", repositories);
 }
 ```
 
