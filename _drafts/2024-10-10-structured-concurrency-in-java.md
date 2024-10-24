@@ -1018,9 +1018,29 @@ public static void main() throws ExecutionException, InterruptedException {
   final GitHubRepository gitHubRepository = new GitHubRepository();
   final List<Repository> repositories =
       timeout(Duration.ofMillis(500L), () -> gitHubRepository.findRepositories(new UserId(1L)));
+  
   LOGGER.info("GitHub user's repositories: {}", repositories);
 }
 ```
 
+Building up a function that implements a timeout on concurrent computation was fun, and we learnt a lot during the process. However, to be fair, the `StructuredTaskScope` type already implement it. In fact, there is an override of the `join` function that takes a `Instant` as input:
 
+```java
+public StructuredTaskScope<T> joinUntil(Instant deadline)
+```
+
+The function waits for the scope to complete for the given duration. If the scope doesn't complete within the given duration, the function throws a `TimeoutException` exception. Then, we can rewrite the `timeout` function just using the `ShutdownOnFailure` policy and the `joinUntil` method:
+
+```java
+static <T> T timeout2(Duration timeout, Callable<T> task)
+        throws InterruptedException, TimeoutException {
+    try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+        var result = scope.fork(task);
+        scope.joinUntil(Instant.now().plus(timeout));
+        return result.get();
+    }
+}
+```
+
+By the way, we were able to implement also the `race` function through the `ShutdownOnResult` policy. So, it was not wasted time after all.
 
