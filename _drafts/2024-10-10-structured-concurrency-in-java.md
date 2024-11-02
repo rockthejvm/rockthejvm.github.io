@@ -1044,3 +1044,87 @@ static <T> T timeout2(Duration timeout, Callable<T> task)
 
 By the way, we were able to implement also the `race` function through the `ShutdownOnResult` policy. So, it was not wasted time after all.
 
+## 6. Cancelling a computation
+
+We saw in the previous section that the `StructuredTaskScope` type comes with a `shutdown` method. We called the method in the `handleComplete` method of the `ShutdownOnResult` policy to stop the computation as soon as the first task completed successfully or failed. The `shutdown` method stops all the pending subtasks forked by the scope. 
+
+All the available policies of the `StructuredTaskScope` calls the `shutdown` method in case of error or success. The `ShudownOnFailure` policy, as the name suggests, calls the `shutdown` method in case of error of one of the forked computation:
+
+```java
+// Java SDK
+@Override
+protected void handleComplete(Subtask<?> subtask) {
+    if (subtask.state() == Subtask.State.FAILED
+            && firstException == null
+            && FIRST_EXCEPTION.compareAndSet(this, null, subtask.exception())) {
+        super.shutdown();
+    }
+}
+```
+
+As we did for our `ShutdownOnResult` implementation, the `shutdown` method is called in the `handleComplete` method, which means when a forked task completes. In the above case, the shutdown policy testes if an exception was thrown by the computation, and in case it was the first exception thrown, it calls the `shutdown` method.
+
+The `ShutdownOnSuccess` policy works in a similar way. It calls the `shutdown` method when it gets the first successful result from one of the forked tasks:
+
+```java
+// Java SDK
+@Override
+protected void handleComplete(Subtask<? extends T> subtask) {
+    if (firstResult != null) {
+        // already captured a result
+        return;
+    }
+    if (subtask.state() == Subtask.State.SUCCESS) {
+        // task succeeded
+        T result = subtask.get();
+        Object r = (result != null) ? result : RESULT_NULL;
+        if (FIRST_RESULT.compareAndSet(this, null, r)) {
+            super.shutdown();
+        }
+    } else if (firstException == null) {
+        // capture the exception thrown by the first subtask that failed
+        FIRST_EXCEPTION.compareAndSet(this, null, subtask.exception());
+    }
+}
+```
+
+As you should remember, failures accumulates and don't force the scope to shut down.
+
+Last but not least, if the policy haven't called the `shutdown` method and the execution of the scope completes, the `shutdown` method is called by the `close` method:
+
+```java
+// Java SDK
+@Override
+public void close() {
+    ensureOwner();
+    int s = state;
+    if (s == CLOSED)
+        return;
+    try {
+        if (s < SHUTDOWN)
+            implShutdown();
+        flock.close();
+    } finally {
+        state = CLOSED;
+    }
+    // throw ISE if the owner didn't attempt to join after forking
+    if (forkRound > lastJoinAttempted) {
+        lastJoinCompleted = forkRound;
+        throw newIllegalStateExceptionNoJoin();
+    }
+}
+```
+
+Despite a lot of implementation details, the above code says that if the scope is still open when the `close` method is called, the `shutdown` method is called. 
+
+As you can see, also the scope has an internal status that is checked to see if the scope is still open or not. The possible statuses are:
+
+```java
+// Java SDK
+// states: OPEN -> SHUTDOWN -> CLOSED
+private static final int OPEN     = 0;   // initial state
+private static final int SHUTDOWN = 1;
+private static final int CLOSED   = 2;
+```
+
+
