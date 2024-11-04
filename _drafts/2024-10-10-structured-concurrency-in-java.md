@@ -376,6 +376,35 @@ If we run the `main` method again, we'll see the following output:
 
 First, we can see that the two forked computation effectively interleave each other. Then, you might have noticed that the `StructuredTaskScope` class uses virtual threads under the hood, as it can be seen from the thread names.
 
+Remember, calling the `join` method before exiting the `try` block is mandatory. If we don't do it, we'll get a `java.lang.IllegalStateException` exception at runtime. For example, we can remove the call to the `join` method from the previous example:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope<>()) {
+    var user = scope.fork(() -> findUserByIdPort.findUser(userId));
+    var repositories = scope.fork(() -> findRepositoriesByUserIdPort.findRepositories(userId));
+    LOGGER.info("Both forked task completed");
+    return new GitHubUser(user.get(), repositories.get());
+  }
+}
+```
+
+As we said, the execution of the above code leads to the following output:
+
+```
+21:21:03.690 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=42]'
+21:21:03.690 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=42]'
+Exception in thread "main" java.lang.IllegalStateException: Owner did not join after forking subtasks
+	at java.base/java.util.concurrent.StructuredTaskScope.newIllegalStateExceptionNoJoin(StructuredTaskScope.java:440)
+	at java.base/java.util.concurrent.StructuredTaskScope.ensureJoinedIfOwner(StructuredTaskScope.java:478)
+	at java.base/java.util.concurrent.StructuredTaskScope$SubtaskImpl.get(StructuredTaskScope.java:931)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.findGitHubUser(GitHubApp.java:263)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:396)
+```
+
+It would be better to avoid such invalid sequence of steps at compile time, but I guess it's a trade-off to keep the API simple.
+
 So, we just finish covering the happy path of structured concurrency, the way Project Loom implements it. Now, it's time to go deeper in which are the available policies for synchronization of forked tasks, and how to handle exceptions.
 
 ## 4. Synchronization Policies
@@ -1263,3 +1292,21 @@ If we run the code again, we can see from the output that the `mineBitcoinWithCo
 09:02:11.164 [virtual-22] INFO GitHubApp -- Bitcoin mining interrupted
 09:02:11.165 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
+
+Calling the `shutdown` method prevents also the scope from forking new tasks. The `fork` method will not simply start any new task if the scope is in the `SHUTDOWN` state. Let's try it with a simple example:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    scope.shutdown();
+    scope.fork(() -> {
+      LOGGER.info("Hello, structured concurrency!");
+      return null;
+    });
+    scope.join().throwIfFailed();
+  }
+  LOGGER.info("Completed");
+}
+```
+
+The execution of the above code will never print the message "Hello, structured concurrency!" since the scope is in the `SHUTDOWN` state when the `fork` method is called.
