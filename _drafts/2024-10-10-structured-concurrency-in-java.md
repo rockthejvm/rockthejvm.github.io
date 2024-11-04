@@ -1125,6 +1125,141 @@ As you can see, also the scope has an internal status that is checked to see if 
 private static final int OPEN     = 0;   // initial state
 private static final int SHUTDOWN = 1;
 private static final int CLOSED   = 2;
+
+private volatile int state;
 ```
 
+A scope starts in the `OPEN` state at creation time since the variable that store the `state` is an `int` and `int`s initial value is always set to zero by the JVM. Then, if the `shutdown` method is called, the scope moves to the `SHUTDOWN` state:
 
+```java
+// Java SDK
+public void shutdown() {
+    ensureOwnerOrContainsThread();
+    int s = ensureOpen();  // throws ISE if closed
+    if (s < SHUTDOWN && implShutdown())
+        flock.wakeup();
+}
+
+private boolean implShutdown() {
+    shutdownLock.lock();
+    try {
+        if (state < SHUTDOWN) {
+            // prevent new threads from starting
+            flock.shutdown();
+            // set status before interrupting tasks
+            state = SHUTDOWN;
+            // interrupt all unfinished threads
+            interruptAll();
+            return true;
+        } else {
+            // already shutdown
+            return false;
+        }
+    } finally {
+        shutdownLock.unlock();
+    }
+}
+```
+
+Finally, the `close()` method move the state of the scope to `CLOSE`, as we saw. The curious reader should have noticed that the scope uses `jdk.internal.misc.ThreadFlock` to manage threads forked by a scope. `ThreadFlock` are a low-level mechanism to manage correlated threads in the JDK. It's to low-level that is even hard to find documentation associated with them.
+
+By the way, we said that calling the `shutdown` method stops all the pending subtasks forked by the scope. The above implementation shows how the method stops the task, calling the `interruptAll` private method. Here is its implementation of the core of the method:
+
+```java
+// Java SDK
+private void implInterruptAll() {
+    flock.threads()
+            .filter(t -> t != Thread.currentThread())
+            .forEach(t -> {
+                try {
+                    t.interrupt();
+                } catch (Throwable ignore) { }
+            });
+}
+```
+
+As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are just interrupted by the scope. As you might remember, [interruption (or cancelling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well in the JDK. However, it's easy to create a computation that can't be interrupted when dealing with CPU-intensive tasks.
+
+Let's make an example. Imagine that we want to mine bitcoins while we're waiting for the repositories of a user. We can implement the `mineBitcoins` method as follows:
+
+```java
+record Bitcoin(String hash) {}
+
+static Bitcoin mineBitcoin() {
+  LOGGER.info("Mining Bitcoin...");
+  while (alwaysTrue()) {
+    // Empty body
+  }
+  LOGGER.info("Bitcoin mined!");
+
+  return new Bitcoin("bitcoin-hash");
+}
+private static boolean alwaysTrue() {
+```
+
+Now, we can make it race with a thread that retrieves the repositories of a user:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();
+  
+  var repositories = race(
+          () -> gitHubRepository.findRepositories(new UserId(42L)), 
+          () -> mineBitcoin()
+  );
+  
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+We expect to get the repositories of the user before the bitcoin is mined and see the `race` function to interrupt the `mineBitcoin` computation. We already tested the `race` function, and we know it works as expected. However, the output of the execution is the following:
+
+```
+08:49:09.118 [virtual-22] INFO GitHubApp -- Mining Bitcoin...
+08:49:09.118 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=42]'
+08:49:10.135 [virtual-20] INFO GitHubApp -- Repositories found for user 'UserId[value=42]'
+(infinite waiting)
+```
+
+The `main` method executes forever, despite the `race` function should interrupt the `mineBitcoin` computation and all the good promises of structured concurrency. The problem is that the `mineBitcoin` computation doesn't have a  check point for the interruption status of its thread. Since interruption is a cooperative mechanism, the `mineBitcoin` computation doesn't know that the scope wants to stop it.
+
+It's easy to fix the problem. We can add a check point in the `mineBitcoin` computation to check if the thread was interrupted. We can check if a thread was interrupted with the `isInterrupted` method on the `Thread` class:
+
+```java
+static Bitcoin mineBitcoinWithConsciousness() {
+  LOGGER.info("Mining Bitcoin...");
+  while (alwaysTrue()) {
+    if (Thread.currentThread().isInterrupted()) {
+      LOGGER.info("Bitcoin mining interrupted");
+      return null;
+    }
+  }
+  LOGGER.info("Bitcoin mined!");
+  return new Bitcoin("bitcoin-hash");
+}
+```
+
+Now, we can retry the `race` function with the `mineBitcoinWithConsciousness` computation:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  final GitHubRepository gitHubRepository = new GitHubRepository();\
+    
+  var repositories = race(
+          () -> gitHubRepository.findRepositories(new UserId(42L)),
+          () -> mineBitcoinWithConsciousness()
+  );
+  
+  LOGGER.info("GitHub user's repositories: {}", repositories);
+}
+```
+
+If we run the code again, we can see from the output that the `mineBitcoinWithConsciousness` computation is interrupted after the user's repositories are retrieved and the `race` function semantic is respected:
+
+```
+09:02:10.116 [virtual-22] INFO GitHubApp -- Mining Bitcoin...
+09:02:10.133 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=42]'
+09:02:11.156 [virtual-20] INFO GitHubApp -- Repositories found for user 'UserId[value=42]'
+09:02:11.164 [virtual-22] INFO GitHubApp -- Bitcoin mining interrupted
+09:02:11.165 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
+```
