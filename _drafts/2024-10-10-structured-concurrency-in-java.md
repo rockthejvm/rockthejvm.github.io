@@ -896,12 +896,15 @@ Now that we have the first result or the first exception thrown by the forked ta
 
 ```java
 public T resultOrThrow() throws ExecutionException {
+  ensureOwnerAndJoined();
   if (firstException != null) {
     throw new ExecutionException(firstException);
   }
   return firstResult;
 }
 ```
+
+As you might notice, the first thing we do in the `resultOrThrow` method is calling a function called `ensureOwnerAndJoined`. The method is `protected` and defined in the `StructuredTaskScope` class. It's an utility method that checks if the current thread is the owner of the scope and if the scope is joined. Checking if the thread calling the method is the owner of the scope is important since we don't want the scope to escape the structured concurrency context. As we'll see in the next section, all the properties of structured concurrency hold if the structure of the code respect the structure of the concurrency, which means that parent-children relationship should be respected. So, if the scope escapes the structured concurrency context, calling the method `ensureOwnerAndJoined` will throw an `java.lang.WrongThreadException` exception.
 
 Finally, the complete code of the `ShutdownOnResult` policy is the following:
 
@@ -1309,4 +1312,196 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-The execution of the above code will never print the message "Hello, structured concurrency!" since the scope is in the `SHUTDOWN` state when the `fork` method is called.
+The execution of the above code will never print the message _"Hello, structured concurrency!"_ since the scope is in the `SHUTDOWN` state when the `fork` method is called. Last but not least, all the forked subtasks that were not completed before calling the `shutdown` method on the associated scope will never trigger the invocation of the `handleComplete` method that we saw previously.
+
+## 7. Parent-Child Relationship
+
+We miss to talk about the relationship available between parent and child task in a structured concurrency context, which is one of its main features. However, we need a more articulated example to demonstrate how structured concurrency in Java manages the parent-child relationship.
+
+Imagine we now want to retrieve the information of two GitHub user concurrently. Moreover, we want to retrieve them in at most a given amount of time or give up otherwise. The signature of the new use case method is the following:
+
+```java
+interface FindGitHubUserUseCase {
+  // Omissis
+  List<GitHubUser> findGitHubUsers(UserId first, UserId second, Duration timeout)
+      throws InterruptedException, ExecutionException;
+}
+```
+
+We all agree that a better signature would have been having a vararg or a list of user. However, the above signature is enough for our needs.
+
+Now, we have all the building block needed to implement the new use case. We want to have a computation limited in time. So, we'll use the `timeout` function we implemented in the previous section. Then, we want to retrieve the information of both user concurrently, and we have the `par` function to do it. Let's implement the new use case:
+
+```java
+@Override
+public List<GitHubUser> findGitHubUsers(UserId first, UserId second, Duration timeout)
+    throws InterruptedException, ExecutionException {
+    
+  var gitHubUsers =
+      timeout(timeout, () -> par(() -> findGitHubUser(first), () -> findGitHubUser(second)));
+  
+  return List.of(gitHubUsers.first, gitHubUsers.second);
+}
+```
+
+The `findGitHubUser` is the method we implemented so far. Despite the conciseness of the code, the above code is an example of a tree of nested tasks. Let's sketch the tasks relationships as we did previously:
+
+![Parent-Children Tree](/images/loom-structured-concurrency/parent-child.png)
+
+As we can see, we have at least 3 levels of nested computations. Now, it's time to exploit the full power of structured concurrency. As we said, we want that the whole computation will stop if it cannot be accomplished in a maximum amount of time. As we might remember, retrieving basic user information takes 500 milliseconds, while retrieving repositories takes 1 second. So, to see structured concurrency in action, we can set up the whole timeout to 700 milliseconds:
+
+```java
+public static void main() throws ExecutionException, InterruptedException {
+  var repository = new GitHubRepository();
+  var service = new FindGitHubUserStructuredConcurrencyService(repository, repository);
+  
+  final List<GitHubUser> gitHubUsers =
+      service.findGitHubUsers(new UserId(42L), new UserId(1L), Duration.ofMillis(700L));
+}
+```
+
+The output of the execution is the following:
+
+```
+08:15:10.955 [virtual-32] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
+08:15:10.955 [virtual-30] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=42]'
+08:15:10.955 [virtual-31] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
+08:15:10.954 [virtual-29] INFO GitHubApp -- Finding user with id 'UserId[value=42]'
+08:15:11.480 [virtual-31] INFO GitHubApp -- User 'UserId[value=1]' found
+08:15:11.481 [virtual-29] INFO GitHubApp -- User 'UserId[value=42]' found
+Exception in thread "main" java.util.concurrent.ExecutionException: java.util.concurrent.TimeoutException: Timeout of PT0.7S reached
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$ShutdownOnResult.resultOrThrow(GitHubApp.java:361)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.race(GitHubApp.java:372)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.timeout(GitHubApp.java:378)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserStructuredConcurrencyService.findGitHubUsers(GitHubApp.java:284)
+	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:428)
+```
+
+First, we saw that the four leaf of the above tree started concurrently, with 4 virtual thread assigned to each leaf: `virtual-29`, `virtual-30`, `virtual-31`, and `virtual-32`. After more or less 500 milliseconds from the start of the computation, the two leafs that retrieve the user information completed successfully. However, the two leafs that retrieve the repositories didn't complete within the given interval. The scope stopped the computation, and the `race` function implementing the `timeout` function threw a `TimeoutException` exception as expected.
+
+Again, enjoy the fact that we've no thread leak in the above code. The scopes stopped all the forked tasks, within 4 nested levels of computations.
+
+How does the whole thing work? Well, as we saw in the previous section, the core mechanism is thread interruption. The outer scope is the one created by the `race` function inside the `timeout` function. The scope is a `ShutdownOnResult`, so it waits for the first result successful or not. The scope is waiting on the `scope.join()` statement:
+
+```java
+static <T> T race(Callable<T> first, Callable<T> second)
+    throws InterruptedException, ExecutionException {
+  try (var scope = new ShutdownOnResult<T>()) {
+    scope.fork(first);
+    scope.fork(second);
+    return scope.join().resultOrThrow(); // <-- The scope is waiting here
+  }
+}
+```
+
+When the thread waiting for the timeout expires, it throws a `TimeoutException`:
+
+```java
+delay(timeout);
+throw new TimeoutException("Timeout of %s reached".formatted(timeout));
+```
+
+Since one of the forked tasks completed (exceptionally), the `ShutdownOnResult.handleComplete` method is called. The `handleComplete` method calls the `shutdown` method on the scope:
+
+```java
+@Override
+    protected void handleComplete(Subtask<? extends T> subtask) {
+      switch (subtask.state()) {
+        case FAILED -> {
+          lock.lock();
+          try {
+            if (firstException == null) {
+              firstException = subtask.exception();
+              shutdown(); // <-- The scope is shutdown here
+            }
+          } finally {
+            lock.unlock();
+          }
+        }
+// ...
+```
+
+As you should remember, the `shutdown` method interrupts all the threads forked by the scope:
+
+```java
+// Java SDK
+private boolean implShutdown() {
+    shutdownLock.lock();
+    try {
+        if (state < SHUTDOWN) {
+            flock.shutdown();
+            state = SHUTDOWN;
+            interruptAll(); // <-- The threads are interrupted here
+// ...
+```
+
+So, the `shutdown` will interrupt the thread executing the `findGitHubUsers` method. The execution of the `findGitHubUsers` method, after having forked the two task retrieving the information for `UserId(1)` and `UserId(42)`, is now suspended on the `ShutdownOnFailure.join` method:
+
+```java
+@Override
+public List<GitHubUser> findGitHubUsers(UserId first, UserId second, Duration timeout)
+      throws InterruptedException, ExecutionException {
+  var gitHubUsers = timeout(timeout, () -> 
+          par(
+            () -> findGitHubUser(first),  // <-- Forked tasks
+            () -> findGitHubUser(second)
+          )
+  );
+  return List.of(gitHubUsers.first, gitHubUsers.second);
+}
+
+// Uses the below `par` implementation
+
+static <T1, T2> Pair<T1, T2> par(Callable<T1> first, Callable<T2> second)
+    throws InterruptedException, ExecutionException {
+  try (var scope = new StructuredTaskScope.ShutdownOnFailure()) {
+    var firstTask = scope.fork(first);
+    var secondTask = scope.fork(second);
+    scope.join().throwIfFailed(); // <-- The scope is waiting here
+    return new Pair<>(firstTask.get(), secondTask.get());
+  }
+}
+```
+
+The `join` method will throw an `InterruptedException` exception, since the owning thread was interrupted. The exception is caught by the `try-with-resources` statement that calls the `ShutdownOnFailure.close` method. First, the `close` method calls the `shutdown` method on the scope, which interrupts all the threads forked by the scope:
+
+```java 
+// Java SDK
+@Override
+public void close() {
+    ensureOwner();
+    int s = state;
+    if (s == CLOSED)
+        return;
+    try {
+        if (s < SHUTDOWN)
+            implShutdown(); // <-- Shutting down the scope will interrupt the forked tasks
+        flock.close();
+    } finally {
+        state = CLOSED;
+    }
+    if (forkRound > lastJoinAttempted) {
+        lastJoinCompleted = forkRound;
+        throw newIllegalStateExceptionNoJoin();
+    }
+}
+```
+
+If you remember, the implementation of the `findGitHubUser` method uses another instance of the `par` function:
+
+```java
+@Override
+public GitHubUser findGitHubUser(UserId userId)
+    throws ExecutionException, InterruptedException {
+  var result =
+      par(
+          () -> findUserByIdPort.findUser(userId),
+          () -> findRepositoriesByUserIdPort.findRepositories(userId));
+  return new GitHubUser(result.first(), result.second());
+}
+```
+
+Clearly, the execution of the `par` method is waiting in the `ShutdownOnFailure.join` method, which will throw an `InterruptedException` exception...and the story goes on as we just saw.
+
+
+
