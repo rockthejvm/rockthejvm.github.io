@@ -1501,7 +1501,9 @@ public GitHubUser findGitHubUser(UserId userId)
 }
 ```
 
-Clearly, the execution of the `par` method is waiting in the `ShutdownOnFailure.join` method, which will throw an `InterruptedException` exception...and the story goes on as we just saw.
+Clearly, the execution of the `par` method is waiting in the `ShutdownOnFailure.join` method, which will throw an `InterruptedException` exception...and the story goes on as we just saw. At first reading, the process could seem complex, but it's not. For those of you that are familiar with UML sequence diagrams, here it is a sequence diagram of the above use case:
+
+![Parent-Children Tree](/images/loom-structured-concurrency/sc-sequence.png)
 
 
 
