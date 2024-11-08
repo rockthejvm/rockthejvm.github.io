@@ -1505,5 +1505,13 @@ Clearly, the execution of the `par` method is waiting in the `ShutdownOnFailure.
 
 ![Parent-Children Tree](/images/loom-structured-concurrency/sc-sequence.png)
 
+For sake of simplicity, the diagram doesn't show threads retrieving the information from GitHub for the second user, but it gives a nice picture of what happens in the code.
+
+The above example introduced another piece in the structured concurrency puzzle in Loom: the `StructuredTaskScope.close` method. As we saw, it has a central role in assuring the contract between parent and children tasks. In fact, it's a guard in case of exceptions thrown during the execution of a scope, like the `InterruptedException` exception in the above example. Moreover, in case the parent scope reaches it's attended result, it's the last line of defense to assure that all the children tasks that are not needed anymore are interrupted. Even though a custom implementation forgets to call the `shutdown` method on the scope, the `close` method will do it for us.
+
+## 8. Conclusion
+
+
+
 
 
