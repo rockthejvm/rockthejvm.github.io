@@ -1511,7 +1511,89 @@ The above example introduced another piece in the structured concurrency puzzle 
 
 ## 8. Conclusion
 
+We finally reach the conclusions of the article. We introduce what structured concurrency is and which are its benefits. We saw that it's hard to avoid thread leaks using the traditional Java concurrency API. Fortunately, project Loom is available from version 19 of Java. The project introduced virtual threads, but also structured concurrency. We saw the different shutdown policies that the JDK brings, and we implemented one custom policy to deep dive the main concepts of structured concurrency. We were able to implement structured concurrency primitives that we find in many libraries like Scala ZIO and Cats Effects. Finally, we saw the parent-child relationship in structured concurrency in action and how the `close` method is the last line of defense to assure that all the children tasks that are not needed anymore are interrupted.
 
+I hope you enjoyed the article and that you learned something new. Thanks for reading the article, and see you in the next one!
+
+## 9. Appendix
+
+As we promised at the beginning of the article, we provide the full `pom.xml` file:
+
+```xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>in.rcard</groupId>
+  <artifactId>virtual-threads-playground</artifactId>
+  <packaging>jar</packaging>
+  <version>2.0.0-SNAPSHOT</version>
+  <name>Project Loom Playground</name>
+
+  <properties>
+    <maven.compiler.source>23</maven.compiler.source>
+    <maven.compiler.target>23</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.5.8</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <pluginManagement><!-- lock down plugins versions to avoid using Maven defaults (maybe moved to parent pom) -->
+      <plugins>
+        <plugin>
+          <artifactId>maven-clean-plugin</artifactId>
+          <version>3.2.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>3.3.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.10.1</version>
+          <configuration>
+            <release>23</release>
+            <compilerArgs>--enable-preview</compilerArgs>
+          </configuration>
+        </plugin>
+        <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.0.0-M7</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>3.2.2</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-install-plugin</artifactId>
+          <version>3.0.1</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-deploy-plugin</artifactId>
+          <version>3.0.0</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-site-plugin</artifactId>
+          <version>4.0.0-M3</version>
+        </plugin>
+        <plugin>
+          <artifactId>maven-project-info-reports-plugin</artifactId>
+          <version>3.4.0</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>
+
+```
 
 
 
