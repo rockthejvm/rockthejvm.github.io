@@ -251,7 +251,7 @@ Fortunately, Project Loom provides a solution to the problem. It's called struct
 
 ## 3. Structured Concurrency
 
-Now that we understood the concerns with what we called plain-old concurrency, let's step back to the sequential solution for a moment:
+Now that we understood the concerns with what we called plain-old concurrency let's step back to the sequential solution for a moment:
 
 ```java
 @Override
@@ -262,27 +262,27 @@ public GitHubUser findGitHubUser(UserId userId) throws InterruptedException {
 }
 ```
 
-As we said, despite being sequential and then not optimized, the above computation has some nice features. 
+As we said, despite being sequential and not optimized, the above computation has some excellent features.
 
-The computation has a clear scope, and the exception handling is straightforward. We can think about the calls to `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods as they were children of the `findGitHubUser` method. The language guarantees that when the `findGitHubUser` method completes, all its children computation are completed too. We cannot have children computation that outlive the parent one. 
+The computation has a clear scope, and the exception handling is straightforward. We can think about the calls to `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods as they were children of the `findGitHubUser` method. The language guarantees that when the `findGitHubUser` method completes, all its children's computations are completed, too. We cannot have children computation that outlive the parent one.
 
-We cannot have resource starvation or execution leaks neither. Again, it's the stack structure of modern programming languages that guarantees it. Every time a function terminates its execution, the runtime can clean up all the resources used by the computation. Moreover, if the `findUserByIdPort.findUser(userId)` method throws an exception, the `findRepositoriesByUserIdPort.findRepositories(userId)` method is not started.
+We cannot have resource starvation or execution leaks, either. Again, the stack structure of modern programming languages guarantees it. Every time a function terminates its execution, the runtime can clean up all the resources used by the computation. Moreover, if the `findUserByIdPort.findUser(userId)` method throws an exception, the `findRepositoriesByUserIdPort.findRepositories(userId)` method is not started.
 
-We can say that the syntactic structure of the code reflects the semantic structure of the computation. We can say that the code is structured. 
+The code's syntactic structure reflects the computation's semantic structure, so it is structured.
 
-Structured concurrency is a concurrency model that satisfies the above properties also in case of code that executes concurrently. It was introduced by Martin Sústrik in his blog post [Structured Concurrency](https://250bpm.com/blog:71/), and then popularized by Nathaniel J. Smith in his blog post [Notes on structured concurrency, or: Go statement considered harmful](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/). 
+Structured concurrency is a concurrency model that satisfies the above properties and executes concurrently in the case of code. Martin Sústrik introduced it in his blog post [Structured Concurrency](https://250bpm.com/blog:71/), and then popularized by Nathaniel J. Smith in his blog post [Notes on structured concurrency, or: Go statement considered harmful](https://vorpus.org/blog/notes-on-structured-concurrency-or-go-statement-considered-harmful/).
 
-At the core, its main objective is to provide a way to structure a concurrent computation in a way that the syntactic structure of the code reflects the semantic structure of the concurrency, satisfying the properties we've seen so far for the sequential code. We say that an operation can fork some children tasks to run concurrently. The relationships between the parent and the children tasks form a tree. 
+At the core, its main objective is to provide a way to structure concurrent computation so that the syntactic structure of the code reflects the semantic structure of the concurrency, satisfying the properties we've seen so far for sequential code. An operation can force some children's tasks to run concurrently. The relationships between the parent and the children's tasks form a tree.
 
 ![Structured Concurrency Tasks Tree](/images/loom-structured-concurrency/structured-concurrency.png)
 
-The execution of the task in a node is guaranteed to be completed only when all the children tasks are completed. If a task throws an exception, all the sibling tasks are stopped, and the exception is propagated to the parent task.
+The task execution in a node is guaranteed to be completed only when all the children's tasks are completed. If a task throws an exception, all the sibling tasks are stopped, and the exception is propagated to the parent task.
 
-In our example, once we'll set up the structured concurrency, the execution of the `findGitHubUser` method will be completed only when the `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods are completed.
+In our example, once we set up the structured concurrency, the execution of the `findGitHubUser` method will be completed when the `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods are completed.
 
-Structured concurrency was already implemented in many programming languages. If we focused on the JVM, we can mention the [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/), Scala [Cats Effects Fibers](https://typelevel.org/cats-effect/docs/concepts#structured-concurrency), and [ZIO Fibers](https://zio.dev/reference/fiber/#structured-concurrency). Now, Project Loom introduces structured concurrency also for Java.
+Structured concurrency has already been implemented in many programming languages. If we focused on the JVM, we could mention the [Kotlin Coroutines](https://blog.rockthejvm.com/kotlin-coroutines-101/), Scala [Cats Effects Fibers](https://typelevel.org/cats-effect/docs/concepts#structured-concurrency), and [ZIO Fibers](https://zio.dev/reference/fiber/#structured-concurrency). Now, Project Loom also introduces structured concurrency for Java.
 
-Java implements structured concurrency though the `java.util.concurrent.StructuredTaskScope` type. Let's lean how to use it directly through coding. First, we need to create the scope into which we want the properties of structured concurrency to be satisfied. Here is the code:
+Java implements structured concurrency through the `java.util.concurrent.StructuredTaskScope` type. Let's learn how to use it directly through coding. First, we need to create the scope into which we want the properties of structured concurrency to be satisfied. Here is the code:
 
 ```java
 @Override
@@ -294,15 +294,15 @@ public GitHubUser findGitHubUser(UserId userId) throws ExecutionException {
 }
 ```
 
-The type is a generic type `T` that represents the result of the computations spawned from it. Since we'll often spawn more than one task with different return type, we usually bound the type variable to `Object`. The type implements the `AutoCloseable` interface, which means we can use it inside a try-with-resources block:
+The generic `T` type represents the result of the computations spawned from it. Since we'll often spawn multiple tasks with a different return type, we usually bound the type variable to `Object`. The type implements the `AutoCloseable` interface, which means we can use it inside a try-with-resources block:
 
 ```java
 public class StructuredTaskScope<T> implements AutoCloseable
 ```
 
-The try-with-resources block delimits the scope of the structured concurrency area. We'll see in a moment that the computation will leave the `try` block only when all the subtask created inside it are completed.
+The try-with-resources block delimits the scope of the structured concurrency area. We'll see in a moment that the computation will leave the `try` block only when all the subtasks created inside it are completed.
 
-Now, we need to create the subtasks. Using the structured concurrency terminology we introduced so far, the thread creating the `StructuredTaskScope` is the parent task, and the subtasks are the children tasks. Here is the code:
+Now, we need to create the subtasks. Using the structured concurrency terminology we introduced so far, the thread making the `StructuredTaskScope` is the parent task, and the subtasks are the children's tasks. Here is the code:
 
 ```java
 @Override
@@ -325,16 +325,16 @@ public class StructuredTaskScope<T> implements AutoCloseable {
 }
 ```
 
-The `fork` method takes a `Callable<T>` object as argument and returns a `Subtask<T>` object. The `Subtask<T>` object is a handle to the child task. To be fair, the `Subtask<T>` is defined as implementation of the `Supplier<T>` interface, which means we can retrieve the result of the computation using the `get` method:
+The `fork` method takes a `Callable<T>` object as an argument and returns a `Subtask<T>` object. The `Subtask<T>` object is a handle to the child task. The `Subtask<T>` is defined as the implementation of the `Supplier<T>` interface, which means we can retrieve the result of the computation using the `get` method:
 
 ```java
 // Java SDK
 public sealed interface Subtask<T> extends Supplier<T> permits SubtaskImpl
 ```
 
-If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations which are not structured, and give a clear-cut with the past.
+If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations, which are not structured and give a clear-cut with the past.
 
-Before getting the result from a `Subtask<T>` object, we need to make sure that the computation is completed. Since we're using the structured concurrency model, we want to synchronize on the executions of all the children tasks. So, we call the method `join` method on the `scope` object:
+We must ensure the computation is completed before getting the result from a `Subtask<T>` object. Since we're using the structured concurrency model, we want to synchronize on the executions of all the children tasks. So, we call the method `join` method on the `scope` object:
 
 ```java
 @Override
@@ -349,7 +349,7 @@ public GitHubUser findGitHubUser(UserId userId) throws ExecutionException, Inter
 }
 ```
 
-After joining all the forked subtask, we can finally retrieve the results, since we know for sure that all the computations are completed. Here is the piece of our puzzle:
+After joining all the forked subtasks, we can retrieve the results since all the computations are completed. Here is the piece of our puzzle:
 
 ```java
 @Override
@@ -375,7 +375,7 @@ If we run the `main` method again, we'll see the following output:
 11:06:37.380 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
 ```
 
-First, we can see that the two forked computation effectively interleave each other. Then, you might have noticed that the `StructuredTaskScope` class uses virtual threads under the hood, as it can be seen from the thread names.
+First, the two forked computations effectively interleave each other. Then, you might have noticed that the `StructuredTaskScope` class uses virtual threads under the hood, as seen from the thread names.
 
 Remember, calling the `join` method before exiting the `try` block is mandatory. If we don't do it, we'll get a `java.lang.IllegalStateException` exception at runtime. For example, we can remove the call to the `join` method from the previous example:
 
@@ -404,9 +404,9 @@ Exception in thread "main" java.lang.IllegalStateException: Owner did not join a
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:396)
 ```
 
-It would be better to avoid such invalid sequence of steps at compile time, but I guess it's a trade-off to keep the API simple.
+It would be better to avoid such an invalid sequence of steps at compile time, but it's a trade-off to keep the API simple.
 
-So, we just finish covering the happy path of structured concurrency, the way Project Loom implements it. Now, it's time to go deeper in which are the available policies for synchronization of forked tasks, and how to handle exceptions.
+So, we finish covering the happy path of structured concurrency and the way Project Loom implements it. Now, it's time to investigate the available policies for synchronizing forked tasks and how to handle exceptions.
 
 ## 4. Synchronization Policies
 
