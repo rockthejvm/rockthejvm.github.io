@@ -32,7 +32,7 @@ Java 23 was released in mid-September 2024, bringing many new features and impro
 </build>
 ```
 
-Once we have set up the project, we can start writing some code to explore structured concurrency in Java. We need an example to work with in detail. This time, we'll take the interaction with GitHub APIs (or at least a simplified version of them) as an example. So, without further ado, let's start writing some code.
+Once we have set up the project, we can start writing some code to explore structured concurrency in Java. We need an example to work with in detail. This time, we'll take the interaction with GitHub APIs (or at least a simplified version) as an example. So, without further ado, let's start writing some code.
 
 ## 2. The Problem with Concurrency
 
@@ -65,7 +65,7 @@ We also define a logger that we'll use to print some helpful information to the 
 private static final Logger LOGGER = LoggerFactory.getLogger("GitHubApp");
 ```
 
-How can we retrieve the needed information? Well, the GitHub API provides a RESTful interface that we can use to retrieve the information we need. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the repositories of the user. From the first one, we retrieve the username and the email address, while from the second one, we retrieve the repositories of the user.
+How can we retrieve the needed information? The GitHub API provides a RESTful interface that we can use to retrieve the information we need. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the user's repositories. From the first one, we retrieve the username and email address, while from the second one, we retrieve the repositories.
 
 We don't need to implement the actual interaction with the GitHub API. So, we'll use a simplified version of the clients. Here are the interfaces we'll use:
 
@@ -245,7 +245,7 @@ Exception in thread "main" java.lang.RuntimeException: Something went wrong
 
 Even if the `main` thread went in error, both the executions of the `findUser` and `findRepositories` methods didn't stop and complete their execution. Again, we found a thread leak. We expected that the `main` thread should be the root of the computation, the parent thread, and if it goes in error, all the computations started from it, aka its children thread, should stop. However, using plain-old concurrency, this is different. We can't express any association within threads.
 
-We can try to implement some sort of policy to fix the above problem. However, it takes work. We need to keep track of all the threads the `ExecutorService` started and stop them when the parent thread goes in error. It's a lot of work, and it's error-prone. We can't rely on the JVM to do it for us. We need to do it manually.
+We can implement some policy to fix the above problem. However, it takes work. We must keep track of all the threads the `ExecutorService` started and stop them when the parent thread goes in error. It's a lot of work, and it's error-prone. We can't rely on the JVM to do it for us. We need to do it manually.
 
 Fortunately, Project Loom provides a solution to the problem. It's called structured concurrency.
 
@@ -334,7 +334,7 @@ public sealed interface Subtask<T> extends Supplier<T> permits SubtaskImpl
 
 If we don't need to use any of the methods specific to the `Subtask<T>` type, and we only need to retrieve the result of the computation, we should use it as a `Supplier<T>` object. Java architects decided not to return a `java.util.concurrent.Future<T>` instance from the `fork` method to avoid confusion with the computations, which are not structured and give a clear-cut with the past.
 
-We must ensure the computation is completed before getting the result from a `Subtask<T>` object. Since we're using the structured concurrency model, we want to synchronize on the executions of all the children tasks. So, we call the method `join` method on the `scope` object:
+We must complete the computation before getting the result from a `Subtask<T>` object. Since we're using the structured concurrency model, we want to synchronize on the executions of all the children tasks. So, we call the method `join` method on the `scope` object:
 
 ```java
 @Override
@@ -406,7 +406,7 @@ Exception in thread "main" java.lang.IllegalStateException: Owner did not join a
 
 It would be better to avoid such an invalid sequence of steps at compile time, but it's a trade-off to keep the API simple.
 
-So, we finish covering the happy path of structured concurrency and the way Project Loom implements it. Now, it's time to investigate the available policies for synchronizing forked tasks and how to handle exceptions.
+So, we finish covering the happy path of structured concurrency and how Project Loom implements it. Now, it's time to investigate the available policies for synchronizing forked tasks and how to handle exceptions.
 
 ## 4. Synchronization Policies
 
@@ -751,7 +751,7 @@ Exception in thread "main" java.util.concurrent.ExecutionException: java.util.No
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:257)
 ```
 
-As we can see, the log reports the first exception thrown by the `cache` task. The second exception, the `RuntimeException("Socket timeout")`, was caught by the `scope`, but it was suppressed. The `StructuredTaskScope.ShutdownOnSuccess` re-throws the first exception if all the tasks throw an exception.
+As we can see, the log reports the first exception thrown by the `cache` task. The second exception, the `RuntimeException("Socket timeout")`, was caught by the `scope` but it was suppressed. The `StructuredTaskScope.ShutdownOnSuccess` re-throws the first exception if all the tasks throw an exception.
 
 We can remap the exception thrown by the `result` method as we did for the `throwIfFailed` method. The `result` method has an override that takes a function as input to map the exception. Here is the code:
 
@@ -790,9 +790,9 @@ public List<Repository> findRepositories(UserId userId)
 }
 ```
 
-If you're familiar with concurrency primitives, you might be asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the completed task, whether successful or not. ZIO and Cats Effects libraries provide such a primitive, which is the building block for creating the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't provide a way to implement the `race` function directly. We need to create our policy to implement it.
+If you're familiar with concurrency primitives, you might be asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the completed task, whether successful or not. ZIO and Cats Effects libraries provide such a primitive building block for creating the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't offer a way to implement the `race` function directly. We need to create our policy to implement it.
 
-Let's do it and deepen our knowledge of structured concurrency internal mechanisms in the meantime.
+Let's do it and deepen our knowledge of structured concurrency internal mechanisms.
 
 ## 5. Implementing a Custom Policy
 
@@ -826,7 +826,7 @@ However, as we already saw in the previous examples, we can't call `get` if the 
 
 We need to know if the computation was completed successfully. The `Subtask` type comes with the method `State state()`, which returns the computation's state as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
 
-A subtask will be in the `SUCCESS` state after it is completed successfully. The `get` method will return the result of the computation. If it completes with an exception, a subtask will be in the `FAILED` state. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example, if we call the `get` method before having `join` the scope or if the subtask was canceled (we'll see in the following sections what does it mean).
+After completing it successfully, A subtask will be in the `SUCCESS` state. The `get` method will return the result of the computation. If it completes with an exception, a subtask will be in the `FAILED` state. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example, if we call the `get` method before having `join` the scope or if the subtask was canceled (we'll see in the following sections what does it mean).
 
 We need to use some state that can store the result of the first successful exception or the exception thrown by the first task that failed:
 
@@ -858,7 +858,7 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
   }
 ```
 
-We want to synchronize access to the state in both reading and writing. We can probably optimize access to the mutable state further, but the article aims to show how to implement a custom policy for structured concurrency. So, we'll keep the code simple:
+We want to synchronize access to the state in both reading and writing. We can optimize access to the mutable state further, but the article aims to show how to implement a custom policy for structured concurrency. So, we'll keep the code simple:
 
 ```java
 @Override
@@ -891,7 +891,7 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 }
 ```
 
-As we can see, the `handleComplete` method just checks the state of the given `subtask` and sets the proper variable representing our state accordingly. After that, the method invokes the `shutdown` method. The `shutdown` method is the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the following sections.
+As we can see, the `handleComplete` method checks the state of the given `subtask` and sets the proper variable representing our state accordingly. After that, the method invokes the `shutdown` method. The `shutdown` method is the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the following sections.
 
 Now that we have the first result or exception thrown by the forked tasks, we need a way to retrieve it. We can add a method to the `ShutdownOnResult` type that returns the result of the computation or throws the first exception thrown. The method looks like a mix between the `ShutdownOnFailure.throwIfFailed` and the `ShutdownOnSuccess.result` methods, and we called it `resultOrThrow`:
 
@@ -1017,7 +1017,7 @@ Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves th
 09:15:43.122 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that is completed, both successful and not. Here is the code:
+Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first completed task, both successful and not. Here is the code:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -1075,7 +1075,7 @@ static <T> T timeout2(Duration timeout, Callable<T> task)
 }
 ```
 
-By the way, we were also able to implement the `race` function through the `ShutdownOnResult` policy, so it was not wasted time after all.
+By the way, we were also able to implement the `race` function through the `ShutdownOnResult` policy, so it was not a waste of time after all.
 
 ## 6. Cancelling a Task
 
@@ -1213,7 +1213,7 @@ private void implInterruptAll() {
 
 As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are interrupted by the scope. As you might remember, [interruption (or canceling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well. However, creating a computation that can't be interrupted when dealing with CPU-intensive tasks is easy.
 
-Let's make an example. Imagine that we want to mine bitcoins while waiting for a user's repositories. We can implement the `mineBitcoins` method as follows:
+Let's make an example. Imagine we want to mine bitcoins while waiting for a user's repositories. We can implement the `mineBitcoins` method as follows:
 
 ```java
 record Bitcoin(String hash) {}
@@ -1315,11 +1315,11 @@ public static void main() throws ExecutionException, InterruptedException {
 
 The execution of the above code will never print the message _"Hello, structured concurrency!"_ since the scope is in the `SHUTDOWN` state when the `fork` method is called. Last but not least, all the forked subtasks that were not completed before calling the `shutdown` method on the associated scope will never trigger the invocation of the `handleComplete` method we saw previously.
 
-## 7. Parent-Child Relationship
+## 7. Parent-Children Relationship
 
-We miss to talk about the relationship available between parent and child task in a structured concurrency context, which is one of its main features. However, we need a more articulated example to demonstrate how structured concurrency in Java manages the parent-child relationship.
+We need to discuss the relationship between parent and child tasks in a structured concurrency context, one of its main features. However, we need a more articulated example to demonstrate how structured concurrency in Java manages the parent-child relationship.
 
-Imagine we now want to retrieve the information of two GitHub user concurrently. Moreover, we want to retrieve them in at most a given amount of time or give up otherwise. The signature of the new use case method is the following:
+Imagine we now want to retrieve the information of two GitHub users concurrently. Moreover, we want to retrieve them at most a given amount of time or give up otherwise. The signature of the new use case method is the following:
 
 ```java
 interface FindGitHubUserUseCase {
@@ -1329,9 +1329,9 @@ interface FindGitHubUserUseCase {
 }
 ```
 
-We all agree that a better signature would have been having a vararg or a list of user. However, the above signature is enough for our needs.
+We all agree that a better signature must have a vararg or a list of users. However, the above signature is enough for our needs.
 
-Now, we have all the building block needed to implement the new use case. We want to have a computation limited in time. So, we'll use the `timeout` function we implemented in the previous section. Then, we want to retrieve the information of both user concurrently, and we have the `par` function to do it. Let's implement the new use case:
+We have all the building blocks needed to implement the new use case. We want to have computation time limited. So, we'll use the `timeout` function we implemented in the previous section. Then, we want to retrieve the information of both users concurrently, and we have the `par` function to do it. Let's implement the new use case:
 
 ```java
 @Override
@@ -1345,11 +1345,11 @@ public List<GitHubUser> findGitHubUsers(UserId first, UserId second, Duration ti
 }
 ```
 
-The `findGitHubUser` is the method we implemented so far. Despite the conciseness of the code, the above code is an example of a tree of nested tasks. Let's sketch the tasks relationships as we did previously:
+The `findGitHubUser` is the method we implemented so far. Despite the conciseness of the code, the above code is an example of a tree of nested tasks. Let's sketch the relationships among tasks as we did previously:
 
 ![Parent-Children Tree](/images/loom-structured-concurrency/parent-child.png)
 
-As we can see, we have at least 3 levels of nested computations. Now, it's time to exploit the full power of structured concurrency. As we said, we want that the whole computation will stop if it cannot be accomplished in a maximum amount of time. As we might remember, retrieving basic user information takes 500 milliseconds, while retrieving repositories takes 1 second. So, to see structured concurrency in action, we can set up the whole timeout to 700 milliseconds:
+As we can see, we have at least three levels of nested computations. Now, it's time to exploit the full power of structured concurrency. As we said, we want the whole computation to stop if it cannot be accomplished in a maximum amount of time. As we might remember, retrieving basic user information takes 500 milliseconds, while retrieving repositories takes 1 second. So, to see structured concurrency in action, we can set up the whole timeout to 700 milliseconds:
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
@@ -1378,11 +1378,11 @@ Exception in thread "main" java.util.concurrent.ExecutionException: java.util.co
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:428)
 ```
 
-First, we saw that the four leaf of the above tree started concurrently, with 4 virtual thread assigned to each leaf: `virtual-29`, `virtual-30`, `virtual-31`, and `virtual-32`. After more or less 500 milliseconds from the start of the computation, the two leafs that retrieve the user information completed successfully. However, the two leafs that retrieve the repositories didn't complete within the given interval. The scope stopped the computation, and the `race` function implementing the `timeout` function threw a `TimeoutException` exception as expected.
+First, we saw that the four leaves of the above tree started concurrently, with four virtual threads assigned to each leaf: `virtual-29`, `virtual-30`, `virtual-31`, and `virtual-32`. After more or less 500 milliseconds from the start of the computation, the two leaves that retrieve the user information are completed successfully. However, the two leaves that retrieved the repositories didn't complete within the given interval. The scope stopped the computation, and the `race` function implementing the `timeout` function threw a `TimeoutException` exception as expected.
 
-Again, enjoy the fact that we've no thread leak in the above code. The scopes stopped all the forked tasks, within 4 nested levels of computations.
+Again, enjoy that the above code does not have a thread leak. The scopes stopped all the forked tasks within four nested levels of computations.
 
-How does the whole thing work? Well, as we saw in the previous section, the core mechanism is thread interruption. The outer scope is the one created by the `race` function inside the `timeout` function. The scope is a `ShutdownOnResult`, so it waits for the first result successful or not. The scope is waiting on the `scope.join()` statement:
+How does the whole thing work? As we saw in the previous section, the core mechanism is thread interruption. The `race` function creates the outer scope inside the `timeout` function. The scope is a `ShutdownOnResult`, so it waits for the first successful result. The scope is waiting on the `scope.join()` statement:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -1406,19 +1406,19 @@ Since one of the forked tasks completed (exceptionally), the `ShutdownOnResult.h
 
 ```java
 @Override
-    protected void handleComplete(Subtask<? extends T> subtask) {
-      switch (subtask.state()) {
-        case FAILED -> {
-          lock.lock();
-          try {
-            if (firstException == null) {
-              firstException = subtask.exception();
-              shutdown(); // <-- The scope is shutdown here
-            }
-          } finally {
-            lock.unlock();
-          }
+protected void handleComplete(Subtask<? extends T> subtask) {
+  switch (subtask.state()) {
+    case FAILED -> {
+      lock.lock();
+      try {
+        if (firstException == null) {
+          firstException = subtask.exception();
+          shutdown(); // <-- The scope is shutdown here
         }
+      } finally {
+        lock.unlock();
+      }
+    }
 // ...
 ```
 
@@ -1436,7 +1436,7 @@ private boolean implShutdown() {
 // ...
 ```
 
-So, the `shutdown` will interrupt the thread executing the `findGitHubUsers` method. The execution of the `findGitHubUsers` method, after having forked the two task retrieving the information for `UserId(1)` and `UserId(42)`, is now suspended on the `ShutdownOnFailure.join` method:
+So, the `shutdown` will interrupt the thread executing the `findGitHubUsers` method. The execution of the `findGitHubUsers` method, after having forked the two tasks retrieving the information for `UserId(1)` and `UserId(42)`, is now suspended on the `ShutdownOnFailure.join` method:
 
 ```java
 @Override
@@ -1464,7 +1464,7 @@ static <T1, T2> Pair<T1, T2> par(Callable<T1> first, Callable<T2> second)
 }
 ```
 
-The `join` method will throw an `InterruptedException` exception, since the owning thread was interrupted. The exception is caught by the `try-with-resources` statement that calls the `ShutdownOnFailure.close` method. First, the `close` method calls the `shutdown` method on the scope, which interrupts all the threads forked by the scope:
+Since the owning thread was interrupted, the `join` method will throw an `InterruptedException` exception. The `try-with-resources` statement that calls the `ShutdownOnFailure.close` method catches the exception. First, the `close` method calls the `shutdown` method on the scope, which interrupts all the threads forked by the scope:
 
 ```java 
 // Java SDK
@@ -1502,19 +1502,19 @@ public GitHubUser findGitHubUser(UserId userId)
 }
 ```
 
-Clearly, the execution of the `par` method is waiting in the `ShutdownOnFailure.join` method, which will throw an `InterruptedException` exception...and the story goes on as we just saw. At first reading, the process could seem complex, but it's not. For those of you that are familiar with UML sequence diagrams, here it is a sequence diagram of the above use case:
+The execution of the `par` method is waiting in the `ShutdownOnFailure.join` method, which will throw an `InterruptedException` exception...and the story goes on as we just saw. At first reading, the process could seem complex, but it's not. For those of you who are familiar with UML sequence diagrams, here is a sequence diagram of the above use case:
 
 ![Parent-Children Tree](/images/loom-structured-concurrency/sc-sequence.png)
 
-For sake of simplicity, the diagram doesn't show threads retrieving the information from GitHub for the second user, but it gives a nice picture of what happens in the code.
+For the sake of simplicity, the diagram doesn't show threads retrieving the information from GitHub for the second user, but it gives a nice picture of what happens in the code.
 
-The above example introduced another piece in the structured concurrency puzzle in Loom: the `StructuredTaskScope.close` method. As we saw, it has a central role in assuring the contract between parent and children tasks. In fact, it's a guard in case of exceptions thrown during the execution of a scope, like the `InterruptedException` exception in the above example. Moreover, in case the parent scope reaches it's attended result, it's the last line of defense to assure that all the children tasks that are not needed anymore are interrupted. Even though a custom implementation forgets to call the `shutdown` method on the scope, the `close` method will do it for us.
+The above example introduced another piece in the structured concurrency puzzle in Loom: the `StructuredTaskScope.close` method. As we can see, it is central to assuring the contract between parents and children's tasks. It's a guard in case of exceptions thrown during the execution of a scope, like the `InterruptedException` exception in the above example. Moreover, if the parent scope reaches its intended result, it's the last line of defense to ensure that all the children's tasks that are not needed anymore are interrupted. Even though a custom implementation forgets to call the `shutdown` method on the scope, the `close` method will do it for us.
 
 ## 8. Conclusion
 
-We finally reach the conclusions of the article. We introduce what structured concurrency is and which are its benefits. We saw that it's hard to avoid thread leaks using the traditional Java concurrency API. Fortunately, project Loom is available from version 19 of Java. The project introduced virtual threads, but also structured concurrency. We saw the different shutdown policies that the JDK brings, and we implemented one custom policy to deep dive the main concepts of structured concurrency. We were able to implement structured concurrency primitives that we find in many libraries like Scala ZIO and Cats Effects. Finally, we saw the parent-child relationship in structured concurrency in action and how the `close` method is the last line of defense to assure that all the children tasks that are not needed anymore are interrupted.
+We finally reach the conclusions of the article. We introduce what structured concurrency is and what its benefits are. We saw it's hard to avoid thread leaks using the traditional Java concurrency API. Fortunately, Project Loom is available in version 19 of Java. The project introduced virtual threads and structured concurrency. We saw the different shutdown policies that the JDK brings, and we implemented one custom policy to dive deep into the main concepts of structured concurrency. We were able to implement structured concurrency primitives that we find in many libraries like Scala ZIO and Cats Effects. Finally, we saw the parent-child relationship in structured concurrency in action and how the `close` method is the last line of defense to ensure that all the children's tasks that are not needed anymore are interrupted.
 
-I hope you enjoyed the article and that you learned something new. Thanks for reading the article, and see you in the next one!
+I hope you enjoyed the article and learned something new. Thanks for reading, and I look forward to the next one!
 
 ## 9. Appendix
 
