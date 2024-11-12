@@ -410,7 +410,7 @@ So, we finish covering the happy path of structured concurrency and the way Proj
 
 ## 4. Synchronization Policies
 
-Let's say that our `findUserByIdPort.findUser(userId)` method will throw an exception, as we previously simulated when we talked about plain-old concurrency. What happens to our structured concurrency computation? Let's see it in action, and executes it:
+Let's say that our `findUserByIdPort.findUser(userId)` method will throw an exception, as we previously simulated when discussing plain-old concurrency. What happens to our structured concurrency computation? Let's see it in action and execute it:
 
 ```
 11:07:17.590 [virtual-20] INFO GitHubApp -- Finding user with id 'UserId[value=1]'
@@ -423,11 +423,11 @@ Exception in thread "main" java.lang.IllegalStateException: Result is unavailabl
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:166)
 ```
 
-The above log is very interesting. First, we see that parent thread waits for the end of both tasks before continuing. So, the tree structure of the computation is respected. The computation went in error when we tried to get the result from the failed computation. Moreover, the second task was not canceled once the first had gone in error. It seems we didn't achieve much with structured concurrency until now.
+The above log is exciting. First, the parent thread waits for the end of both tasks before continuing. So, the tree structure of the computation is respected. The computation went in error when we tried to get the result from the failed computation. Moreover, the second task was not canceled once the first went into error. We have just achieved a lot with structured concurrency.
 
-The issue is the type of the scope we chose to use. In fact, the `StructuredTaskScope<T>` doesn't implement any advanced policy for error handling. It's a simple blueprint to build advanced policies. At the moment of writing, project Loom comes with two implementations of the `StructuredTaskScope<T>` type: `java.util.concurrent.StructuredTaskScope.ShutdownOnFailure` and `java.util.concurrent.StructuredTaskScope.ShutdownOnSuccess`
+The issue is the type of scope we chose to use. The `StructuredTaskScope<T>` doesn't implement any advanced policy for error handling. It's a simple blueprint to build advanced policies. At the moment of writing, project Loom comes with two implementations of the `StructuredTaskScope<T>` type: `java.util.concurrent.StructuredTaskScope.ShutdownOnFailure` and `java.util.concurrent.StructuredTaskScope.ShutdownOnSuccess`
 
-Let's start with analyzing the first one. We'll do using it directly into our example and see what happens. Here is the code:
+Let's start with analyzing the first one. We'll use it directly in our example and see what happens. Here is the code:
 
 ```java
 @Override
@@ -454,7 +454,7 @@ First, we execute the case in which no exception is thrown. The output is the fo
 08:21:06.111 [main] INFO GitHubApp -- GitHub user: GitHubUser[user=User[userId=UserId[value=1], name=UserName[value=rcardin], email=Email[value=rcardin@rockthejvm.com]], repositories=[Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]]
 ```
 
-As we can see, there is nothing interesting. The behavior is the same of the execution with the `StructuredTaskScope` type as expected. Now, let's see what happens when the `findUserByIdPort.findUser(userId)` method throws an exception:
+Everything could be more enjoyable. The behavior is the same as the execution with the `StructuredTaskScope` type as expected. Now, let's see what happens when the `findUserByIdPort.findUser(userId)` method throws an exception:
 
 ```
 08:22:42.466 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
@@ -466,11 +466,11 @@ Exception in thread "main" java.lang.IllegalStateException: Result is unavailabl
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:167)
 ```
 
-Well, the output looks very promising. The second task was stopped (canceled) as soon as the first one went in error. The parent task was not stop and a `java.lang.IllegalStateException` exception was thrown when we tried to get the result from the failed computation. So, we solved one of the problems of unstructured concurrency, thread leaks and resources starvation. A good step forward.
+Well, the output looks very promising. When the first task failed, the second task was stopped (canceled). The parent task was not stopped, and a `java.lang.IllegalStateException` exception was thrown when we tried to get the result from the failed computation. So, we solved one of the problems of unstructured concurrency, thread leaks, and resource starvation. It's a good step forward.
 
-However, the thrown exception was not the original exception thrown by the child computation in error. We completely lost the original cause of error. However, we can do better. The `StructuredTaskScope.ShutdownOnFailure` scope adds a method to the available ones, `throwIfFailed`. As the documentation said, the method throws if any of the subtasks failed. The method throws an `java.util.concurrent.ExecutionException` exception set with the original exception as its cause. If no subtask failed, the method returns normally.
+However, the thrown exception was not the original one the child computation threw in error. We completely lost the original cause of the error. However, we can do better. The `StructuredTaskScope.ShutdownOnFailure` scope adds a method to the available ones, `throwIfFailed`. As the documentation said, the method throws if any subtasks fail. The method throws a `java.util.concurrent.ExecutionException` exception set with the original exception as its cause. If no subtask fails, the process usually returns.
 
-We change first our code to see the new behavior in action:
+We first change our code to see the new behavior in action:
 
 ```java
 @Override
@@ -489,7 +489,7 @@ public GitHubUser findGitHubUser(UserId userId)
 }
 ```
 
-If we run the code, we'll notice that the behavior is the expected one. The output is the following:
+If we run the code, we'll notice that the behavior is expected. The output is the following:
 
 ```
 08:34:53.701 [main] INFO GitHubApp -- Both forked task completed
@@ -514,7 +514,7 @@ If we want to change the type of the exception thrown by the `throwIfFailed`, th
 public <X extends Throwable> void throwIfFailed(Function<Throwable, ? extends X> esf) throws X
 ```
 
-Let's say we want to rethrow exactly the original exception. We can do it using the identity function:
+Let's say we re-throw exactly the original exception. We can do it using the identity function:
 
 ```java
 @Override
@@ -546,7 +546,7 @@ Exception in thread "main" java.lang.RuntimeException: Socket timeout
 	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
 ```
 
-As we can see from the log, we successfully rethrow the original exception. However, there is an issue we should be aware of. The `throwIfFailed` method takes a function with a `Throwable` instance as input to `Throwable`, which means that the function will be called also for terminal errors, such as `OutOfMemoryError` or `StackOverflowError`. As a rule of thumb, we should avoid catching such errors, and let the JVM handle them. So, if we need to process the error with the `throwIfFailed` method, remember to check if the input is an instance of `Exception` or `Error` and act accordingly:
+As we can see from the log, we successfully re-throw the original exception. However, there is an issue we should be aware of. The `throwIfFailed` method takes a function with a `Throwable` instance as input to `Throwable`, which means that the function will also be called for terminal errors, such as `OutOfMemoryError` or `StackOverflowError`. As a rule, we should avoid catching such errors and let the JVM handle them. So, if we need to process the error with the `throwIfFailed` method, remember to check if the input is an instance of `Exception` or `Error` and act accordingly:
 
 ```java
 scope.join().throwIfFailed(throwable -> {
@@ -557,7 +557,7 @@ scope.join().throwIfFailed(throwable -> {
 });
 ```
 
-It's easy to use the `StructuredTaskScope.ShutdownOnFailure` policy to implement an structured concurrency primitive that is available in all the library implementing some form of concurrency: We're talking about the `par` function. The `par` function takes two tasks and returns the result of both, or it stops if any of the two computation fails. For who is familiar with Scala Cats Effects or ZIO libraries, the `par` function is a common primitive. Here is the code:
+It's easy to use the `StructuredTaskScope.ShutdownOnFailure` policy to implement a structured concurrency primitive available in all the libraries implementing some form of concurrency: We're talking about the `par` function. The `par` function takes two tasks and returns the result of both, or it stops if any of the two computations fail. For those who are familiar with Scala Cats Effects or ZIO libraries, the `par` function is a typical primitive. Here is the code:
 
 ```java
 record Pair<T1, T2>(T1 first, T2 second) {}
@@ -573,7 +573,7 @@ static <T1, T2> Pair<T1, T2> par(Callable<T1> first, Callable<T2> second)
 }
 ```
 
-If you have noticed, the above code is exactly what we did in the `findGitHubUser` method. We can now refactor the method to use the `par` function:
+If you have noticed, the above code is what we did in the `findGitHubUser` method. We can now refactor the method to use the `par` function:
 
 ```java
 @Override
@@ -588,9 +588,9 @@ public GitHubUser findGitHubUser(UserId userId)
 }
 ```
 
-The `StructuredTaskScope.ShutdownOnFailure` is not the only policy available. The JDK comes with another built-in policy, the `StructuredTaskScope.ShutdownOnSuccess`. The policy is similar to the `ShutdownOnFailure` one, but it stops the computation at first subtask that completes successfully. Let's build an example to analyze the function in detail.
+The `StructuredTaskScope.ShutdownOnFailure` is not the only policy available. The JDK has another built-in policy, the `StructuredTaskScope.ShutdownOnSuccess`. The policy is similar to the `ShutdownOnFailure` one but stops the computation at the first subtask that completes successfully. Let's build an example to analyze the function in detail.
 
-Imagine that we noticed that retrieving all the repositories of a user is a very expensive operation. Moreover, the repositories of a user change very rarely. So, we decide to build a cached version of the `findRepositories` method. First, we need to define an implementation of the port that uses a cache to store the result of the computation. Here is the code:
+Imagine that we noticed that retrieving all the user's repositories is a costly operation—moreover, the repositories of a user change very rarely. So, we decide to build a cached version of the `findRepositories` method. First, we need to define an implementation of the port that uses a cache to store the result of the computation. Here is the code:
 
 ```java
 class FindRepositoriesByUserIdCache implements FindRepositoriesByUserIdPort {
@@ -629,11 +629,11 @@ class FindRepositoriesByUserIdCache implements FindRepositoriesByUserIdPort {
 }
 ```
 
-As you can see, we're simulating a distributed cache like Redis with an in-memory map and a delay to simulate the network latency. Moreover, we're not paying attention to concurrent access to the map since the main topic of the article is not the concurrent access of data structures. Please, don't use the above code in production. Moreover, the behaviour in case the repositories are not found in the cache is a bit rude. The method throws a `NoSuchElementException` exception. However, it'll be clear in a moment why we did it.
+As you can see, we're simulating a distributed cache like Redis with an in-memory map and a delay to simulate the network latency. Moreover, we must pay attention to concurrent access to the map since the article's main topic is not the simultaneous access of data structures. Please don't use the above code in production. Moreover, the behavior in case the repositories are not found in the cache is rude. The method throws a `NoSuchElementException` exception. However, it'll be clear in a moment why we did it.
 
 At startup time, the only cached repositories are those of the user with `UserId(42L)`.
 
-Now, we can implement a pimped version of our original `findRepositories` method. It'll spawn two tasks: one to retrieve the repositories from the cache and one to retrieve the repositories from the GitHub API. The first task that completes successfully will stop the computation. Here is the code:
+Now, we can implement a pimped version of our original `findRepositories` method. It'll spawn two tasks: one to retrieve the repositories from the cache and one to retrieve the repositories from the GitHub API. The first task that is completed successfully will stop the computation. Here is the code:
 
 ```java
 static class GitHubCachedRepository implements FindRepositoriesByUserIdPort {
@@ -664,7 +664,7 @@ static class GitHubCachedRepository implements FindRepositoriesByUserIdPort {
 }
 ```
 
-We used the `StructuredTaskScope.ShutdownOnSuccess` policy to implement our new use case. Let's spot the differences with the previous policy we used. First, the type of the scope is `StructuredTaskScope.ShutdownOnSuccess<List<Repository>>`. The type parameter is the type of the result of the computation. Then, we didn't give much attention to the `Subtask` objects returned by the `fork` method. In fact, as we can see, we call the `result` method on the `scope` object to retrieve the result of the computation. In fact, we can't know which of the two tasks completed successfully first. The `result` method returns the result of the first task that completed successfully.
+We used the `StructuredTaskScope.ShutdownOnSuccess` policy to implement our new use case. Let's spot the differences with the previous policy we used. First, the type of the scope is `StructuredTaskScope.ShutdownOnSuccess<List<Repository>>`. The type parameter is the type of computation result. Then, we didn't give much attention to the `Subtask` objects returned by the `fork` method. As we can see, we call the `result` method on the `scope` object to retrieve the result of the computation. We need to determine which of the two tasks was completed successfully. The `result` method returns the result of the first task completed successfully.
 
 Let's test the new implementation. We can use the `main` method to do it:
 
@@ -680,7 +680,7 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-We expect that the `cache` to throw an exception since the repositories of the user with `UserId(1L)` are not cached, and the `repository` to complete successfully the execution. As we said, the `StructuredTaskScope.ShutdownOnSuccess` scope waits for the first task that completes successfully. The output of the execution is in fact the following:
+We expect the `cache` to throw an exception since the repositories of the user with `UserId(1L)` are not cached and the `repository` to complete the execution successfully. As we said, the `StructuredTaskScope.ShutdownOnSuccess` scope waits for the first complete task. The output of the execution is, in fact, the following:
 
 ```
 09:43:21.679 [virtual-22] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
@@ -689,9 +689,9 @@ We expect that the `cache` to throw an exception since the repositories of the u
 09:43:22.812 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-As we can see, the `cache` task throws an exception, and the `repository` task completes successfully. The computation stops, and the result is the one we expect. 
+As we can see, the `cache` task throws an exception, and the `repository` task completes successfully. The computation stops, and the result is the one we expect.
 
-Now, we can simulate that the `cache` completes successfully, finding the user's repositories in-memory. As you might remember, the repositories of the user with `UserId(42L` are put in cache at startup time. Let's change our `main` method to test the new scenario:
+Now, we can simulate that the `cache` completes successfully, finding the user's repositories in memory. As you might remember, the user's repositories with `UserId(42L` are in the cache at startup time. Let's change our `main` method to test the new scenario:
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
@@ -712,7 +712,7 @@ The output of the execution is the following:
 21:36:33.014 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=rockthejvm.github.io, visibility=PUBLIC, uri=https://github.com/rockthejvm/rockthejvm.github.io]]
 ```
 
-As we can see, the computation that doesn't use the cache started. However, since the computation that uses the cache completed successfully, the other computation in canceled to avoid wasting resources. We've achieved our goal. 
+The computation that doesn't use the cache started. However, since the cache task was completed successfully, the other computation was canceled to avoid wasting resources. We've achieved our goal.
 
 What if both tasks throw an exception? We can see it in action by changing the `findRepositories` of the `GitHubRepository` class to throw an exception. Here is the code:
 
@@ -726,7 +726,7 @@ public List<Repository> findRepositories(UserId userId) throws InterruptedExcept
 }
 ```
 
-Now, we need to switch the user using during the search to let the `cache` crash again. 
+We must switch the user's use during the search to let the `cache` crash again.
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
@@ -751,17 +751,17 @@ Exception in thread "main" java.util.concurrent.ExecutionException: java.util.No
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:257)
 ```
 
-As we can see, the log reports the exception thrown by the `cache` task, the first one that was thrown. The second exception, the `RuntimeException("Socket timeout")` was caught by the `scope`, but it was suppressed. In fact, the `StructuredTaskScope.ShutdownOnSuccess` rethrows the first exception thrown if all the tasks throw an exception.
+As we can see, the log reports the first exception thrown by the `cache` task. The second exception, the `RuntimeException("Socket timeout")`, was caught by the `scope`, but it was suppressed. The `StructuredTaskScope.ShutdownOnSuccess` re-throws the first exception if all the tasks throw an exception.
 
-We can remap the exception thrown by the `result` method as we did for the `throwIfFailed` method. The `result` method comes with an override that takes a function as input to map the exception. Here is the code:
+We can remap the exception thrown by the `result` method as we did for the `throwIfFailed` method. The `result` method has an override that takes a function as input to map the exception. Here is the code:
 
 ```java
 scope.join().result(Function.identity());
 ```
 
-Clearly, the same warnings or remapping the exceptions we gave for the `throwIfFailed` method apply to the `result` method.
+The same warnings or remapping of the exceptions we gave for the `throwIfFailed` method apply to the `result` method.
 
-We can use the `StructuredTaskScope.ShutdownOnSuccess` to implement another concurrency primitive present in other well-known libraries such as ZIO and Softwaremill Ox: The `raceAll` function. The `raceAll` function takes two tasks and returns the result of the first task that completes successfully. If both tasks throw an exception, the first exception thrown is rethrown. Here is how we can implement it in Java using the `StructuredTaskScope.ShutdownOnSuccess` policy:
+We can use the `StructuredTaskScope.ShutdownOnSuccess` to implement another concurrency primitive present in other well-known libraries, such as ZIO and Softwaremill Ox: The `raceAll` function. The `raceAll` function takes two tasks and returns the result of the first successfully completed task. If both tasks throw an exception, the first exception thrown is re-thrown. Here is how we can implement it in Java using the `StructuredTaskScope.ShutdownOnSuccess` policy:
 
 ```java
 static <T> T raceAll(Callable<T> first, Callable<T> second)
@@ -790,15 +790,15 @@ public List<Repository> findRepositories(UserId userId)
 }
 ```
 
-If you're familiar with concurrency primitives, you might have asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the first task that completes, both if successful or not. Both ZIO and Cats Effects libraries provide such a primitive, and it is the building block to create the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't provide a way to implement the `race` function directly. We need to create our own policy to implement it.
+If you're familiar with concurrency primitives, you might be asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the completed task, whether successful or not. ZIO and Cats Effects libraries provide such a primitive, which is the building block for creating the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't provide a way to implement the `race` function directly. We need to create our policy to implement it.
 
-Let's do it, and let's deepen our knowledge of structured concurrency internal mechanisms in the meantime.
+Let's do it and deepen our knowledge of structured concurrency internal mechanisms in the meantime.
 
-## 5. Implementing a custom policy
+## 5. Implementing a Custom Policy
 
-As we said, we want to implement a structured concurrency policy that mimic the behaviour of the `race` function. The `race` function should execute two tasks concurrently and return the result of the first task that completes, both if successful or not. Let's do it one step at time. 
+As we said, we want to implement a structured concurrency policy that mimics the behavior of the `race` function. The `race` function should execute two tasks concurrently and return the result of the first task that is completed, whether successful or not. Let's do it one step at a time.
 
-Implementing a custom policy always start extending the `StructuredTaskScope` type. In fact, the base class implements all the mechanisms to handle the synchronization of the forked tasks. So, first of all, we need to extend the `StructuredTaskScope` type:
+Implementing a custom policy always starts extending the `StructuredTaskScope` type. The base class implements all the mechanisms to synchronize the forked tasks. So, first of all, we need to extend the `StructuredTaskScope` type:
 
 ```java
 class ShutdownOnResult<T> extends StructuredTaskScope<T> {
@@ -806,7 +806,7 @@ class ShutdownOnResult<T> extends StructuredTaskScope<T> {
 }
 ```
 
-We want our policy to return a result of type `T`, similarly to what is done by the `ShutdownOnSuccess<T>` type. Then, we made the new policy generic on `T`. The `StructuredTaskScope` is a concrete class, there is no abstract method to implement. The documentation tells us that we need to override the `handleComplete` method:
+We want our policy to return a result of type `T`, similar to what is done by the `ShutdownOnSuccess<T>` type. Then, we made the new policy generic on `T`. The `StructuredTaskScope` is a concrete class with no abstract method to implement. The documentation tells us that we need to override the `handleComplete` method:
 
 ```java
 static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
@@ -818,15 +818,15 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
 }
 ```
 
-The method takes a `Subtask<T>` in input. In fact, the scope calls the `handleComplete` every time a subtask forked by the scope completes. The input subtask is the one that completes.
+The method takes a `Subtask<T>` in input. The scope calls the `handleComplete` every time a subtask forked by the scope completes. The input subtask is the one that completes.
 
-Now, we can extract the result of the computation from the subtask. The `Subtask` type exposes two methods. The first is the `T get()` method we used so far and that returns the computed value in case of success. If you remember, the `get` methods comes from the `Supplier<T>` interface that the `Subtask<T>` implements. The second method is the `Throwable exception()`, which returns the exception thrown by the computation in case of failure.
+Now, we can extract the result of the computation from the subtask. The `Subtask` type exposes two methods. The first is the `T get()` method we used so far that returns the computed value in case of success. If you remember, the `get` method comes from the `Supplier<T>` interface that the `Subtask<T>` implements. The second method is the `Throwable exception()`, which returns the exception thrown by the computation in case of failure.
 
-However, as we already saw in the previous examples, we can't call `get` if the computation failed otherwise the method will throw an `IllegalStateException`. On the other hand, if the computation succeeded, we can't call the `exception` method, which will have the same behavior. 
+However, as we already saw in the previous examples, we can't call `get` if the computation fails; otherwise, the method will throw an `IllegalStateException`. On the other hand, if the computation succeeds, we can't call the `exception` method, which will have the same behavior.
 
-We need a way to know if the computation completed successfully or not. The `Subtask` type comes with the method `State state()` that returns the state of the computation as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
+We need to know if the computation was completed successfully. The `Subtask` type comes with the method `State state()`, which returns the computation's state as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
 
-A subtask will be in the `SUCCESS` state after the computation completed successfully. The `get` method will return the result of the computation. A subtask will be in the `FAILED` state after the computation completed with an exception. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example if we call the `get` method before the having `join` the scope or if the subtask was canceled (we'll see in the next sections what does it means).
+A subtask will be in the `SUCCESS` state after it is completed successfully. The `get` method will return the result of the computation. If it completes with an exception, a subtask will be in the `FAILED` state. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example, if we call the `get` method before having `join` the scope or if the subtask was canceled (we'll see in the following sections what does it mean).
 
 We need to use some state that can store the result of the first successful exception or the exception thrown by the first task that failed:
 
@@ -842,9 +842,9 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
 }
 ```
 
-We need to synchronize the access to the state since the `handleComplete` method is called concurrently by the forked tasks. There are a million way to do it. The only one we don't want to use is calling a `synchronized` block. [As you might remember](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/#6-pinned-virtual-threads), virtual threads don't work well with `synchronized` blocks, since the carrier thread is pinned to the virtual thread and so it blocks waiting for the lock to be released. 
+We need to synchronize the access to the state since the `handleComplete` method is called concurrently by the forked tasks. There are a million ways to do it. The only one we don't want to use is calling a `synchronized` block. [As you might remember](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/#6-pinned-virtual-threads), virtual threads don't work well with `synchronized` blocks since the carrier thread is pinned to the virtual thread, and so it blocks waiting for the lock to be released.
 
-We can use a `ReentrantLock` to synchronize the access to the state instead, which doesn't suffer of the above problem:
+We can use a `ReentrantLock` to synchronize the access to the state instead, which doesn't suffer the above problem:
 
 ```java
 static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
@@ -858,7 +858,7 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
   }
 ```
 
-We want to synchronize the access to the state both in reading and writing. Probably, we can optimize further the access to the mutable state, but the aim of the article is to show how to implement a custom policy for structured concurrency. So, we'll keep the code simple:
+We want to synchronize access to the state in both reading and writing. We can probably optimize access to the mutable state further, but the article aims to show how to implement a custom policy for structured concurrency. So, we'll keep the code simple:
 
 ```java
 @Override
@@ -891,9 +891,9 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 }
 ```
 
-As we can see, the `handleComplete` method just check the state of the given `subtask`, and set the proper variable representing our state accordingly. After that, the method calls the `shutdown` method. The `shutdown` method is a method of the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the next sections.
+As we can see, the `handleComplete` method just checks the state of the given `subtask` and sets the proper variable representing our state accordingly. After that, the method invokes the `shutdown` method. The `shutdown` method is the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the following sections.
 
-Now that we have the first result or the first exception thrown by the forked tasks, we need a way to retrieve it. We can add a method to the `ShutdownOnResult` type that returns the result of the computation or throws the exception thrown by the computation. The method looks like a mix between the `ShutdownOnFailure.throwIfFailed` and the `ShutdownOnSuccess.result` methods, and we called it `resultOrThrow`:
+Now that we have the first result or exception thrown by the forked tasks, we need a way to retrieve it. We can add a method to the `ShutdownOnResult` type that returns the result of the computation or throws the first exception thrown. The method looks like a mix between the `ShutdownOnFailure.throwIfFailed` and the `ShutdownOnSuccess.result` methods, and we called it `resultOrThrow`:
 
 ```java
 public T resultOrThrow() throws ExecutionException {
@@ -905,7 +905,7 @@ public T resultOrThrow() throws ExecutionException {
 }
 ```
 
-As you might notice, the first thing we do in the `resultOrThrow` method is calling a function called `ensureOwnerAndJoined`. The method is `protected` and defined in the `StructuredTaskScope` class. It's an utility method that checks if the current thread is the owner of the scope and if the scope is joined. Checking if the thread calling the method is the owner of the scope is important since we don't want the scope to escape the structured concurrency context. As we'll see in the next section, all the properties of structured concurrency hold if the structure of the code respect the structure of the concurrency, which means that parent-children relationship should be respected. So, if the scope escapes the structured concurrency context, calling the method `ensureOwnerAndJoined` will throw an `java.lang.WrongThreadException` exception.
+As you might notice, the first thing we do in the `resultOrThrow` method is the `ensureOwnerAndJoined` function. The method is `protected` and defined in the `StructuredTaskScope` class. It's a utility method that checks if the current thread is the owner of the scope and if the scope is joined. Checking if the thread calling the function is the owner of the scope is crucial since we want the scope to stay within the structured concurrency context. As we'll see in the next section, all the properties of structured concurrency hold if the structure of the code respects the structure of the concurrency, which means that the parent-children relationship should be respected. So, if the scope escapes the structured concurrency context, calling the method `ensureOwnerAndJoined` will throw a `java.lang.WrongThreadException` exception.
 
 Finally, the complete code of the `ShutdownOnResult` policy is the following:
 
@@ -959,7 +959,7 @@ static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
 }
 ```
 
-Let's try our new policy in action. For example, say that we want to retrieve the repositories of a user within a given interval or give up otherwise. Obviously, we want the computation to be properly shutdown in both cases, as we did in all the previous examples. We can use the new and shiny `ShutdownOnResult` policy to implement the use case:
+Let's try our new policy in action. For example, say that we want to retrieve a user's repositories within a given interval or give up otherwise. We want the computation to be shut down correctly in both cases, as we did in all the previous examples. We can use the new and shiny `ShutdownOnResult` policy to implement the use case:
 
 ```java
 static class FindRepositoriesByUserIdWithTimeout {
@@ -995,7 +995,7 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-As we might have expected, the output of the execution is the following, saying that the computation retrieving the repositories started but couldn't complete within the given interval, and it was canceled.
+As expected, the execution output is the following: The computation retrieving the repositories started but couldn't complete within the given interval, so it was canceled.
 
 ```
 09:13:08.611 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
@@ -1017,7 +1017,7 @@ Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves th
 09:15:43.122 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that completes, both if successful or not. Here is the code:
+Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first task that is completed, both successful and not. Here is the code:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -1030,7 +1030,7 @@ static <T> T race(Callable<T> first, Callable<T> second)
 }
 ```
 
-Once we have the `race` function, we can use it to implement the `timeout` function. The `timeout` function takes a task and a duration as input. The function returns the result of the task if the task completes within the given duration. If the task doesn't complete within the given duration, the function throws a `TimeoutException` exception. Here is the code:
+We can implement the ' timeout ' function once we have the `race` function. The `timeout` function takes a task and a duration as input. The function returns the task result if the task is completed within the given duration. If the task isn't completed within the given duration, the function throws a `TimeoutException` exception. Here is the code:
 
 ```java
 static <T> T timeout(Duration timeout, Callable<T> task)
@@ -1056,13 +1056,13 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-Building up a function that implements a timeout on concurrent computation was fun, and we learnt a lot during the process. However, to be fair, the `StructuredTaskScope` type already implement it. In fact, there is an override of the `join` function that takes a `Instant` as input:
+Building up a function that implements a timeout on concurrent computation was fun, and we learned a lot during the process. However, the `StructuredTaskScope` type already implements it. There is an override of the `join` function that takes an `Instant` as input:
 
 ```java
 public StructuredTaskScope<T> joinUntil(Instant deadline)
 ```
 
-The function waits for the scope to complete for the given duration. If the scope doesn't complete within the given duration, the function throws a `TimeoutException` exception. Then, we can rewrite the `timeout` function just using the `ShutdownOnFailure` policy and the `joinUntil` method:
+The function waits for the scope to complete for the given duration. If the scope isn't complete within the given duration, the function throws a `TimeoutException` exception. Then, we can rewrite the `timeout` function just using the `ShutdownOnFailure` policy and the `joinUntil` method:
 
 ```java
 static <T> T timeout2(Duration timeout, Callable<T> task)
@@ -1075,13 +1075,13 @@ static <T> T timeout2(Duration timeout, Callable<T> task)
 }
 ```
 
-By the way, we were able to implement also the `race` function through the `ShutdownOnResult` policy. So, it was not wasted time after all.
+By the way, we were also able to implement the `race` function through the `ShutdownOnResult` policy, so it was not wasted time after all.
 
-## 6. Cancelling a computation
+## 6. Cancelling a Task
 
-We saw in the previous section that the `StructuredTaskScope` type comes with a `shutdown` method. We called the method in the `handleComplete` method of the `ShutdownOnResult` policy to stop the computation as soon as the first task completed successfully or failed. The `shutdown` method stops all the pending subtasks forked by the scope. 
+In the previous section, we saw that the `StructuredTaskScope` type comes with a `shutdown` method. We called the method in the `handleComplete` method of the `ShutdownOnResult` policy to stop the computation as soon as the first task was completed successfully or failed. The `shutdown` method stops all the pending subtasks forked by the scope.
 
-All the available policies of the `StructuredTaskScope` calls the `shutdown` method in case of error or success. The `ShudownOnFailure` policy, as the name suggests, calls the `shutdown` method in case of error of one of the forked computation:
+All the available policies of the `StructuredTaskScope` call the `shutdown` method in case of error or success. The `ShudownOnFailure` policy, as the name suggests, calls the `shutdown` method in case of an error in one of the forked computations:
 
 ```java
 // Java SDK
@@ -1095,9 +1095,9 @@ protected void handleComplete(Subtask<?> subtask) {
 }
 ```
 
-As we did for our `ShutdownOnResult` implementation, the `shutdown` method is called in the `handleComplete` method, which means when a forked task completes. In the above case, the shutdown policy testes if an exception was thrown by the computation, and in case it was the first exception thrown, it calls the `shutdown` method.
+As we did for our `ShutdownOnResult` implementation, the `shutdown` method is called in the `handleComplete` method, which means when a forked task completes. In the above case, the shutdown policy tests if the computation threw an exception, and in case it was the first exception thrown, it is called the `shutdown` method.
 
-The `ShutdownOnSuccess` policy works in a similar way. It calls the `shutdown` method when it gets the first successful result from one of the forked tasks:
+The `ShutdownOnSuccess` policy works similarly. It calls the `shutdown` method when it gets the first successful result from one of the forked tasks:
 
 ```java
 // Java SDK
@@ -1121,9 +1121,9 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 }
 ```
 
-As you should remember, failures accumulates and don't force the scope to shut down.
+As you should remember, failures accumulate and don't force the scope to shut down.
 
-Last but not least, if the policy haven't called the `shutdown` method and the execution of the scope completes, the `shutdown` method is called by the `close` method:
+Last but not least, if the policy hasn't called the `shutdown` method and the execution of the scope is completed, the `shutdown` method is called by the `close` method:
 
 ```java
 // Java SDK
@@ -1148,9 +1148,9 @@ public void close() {
 }
 ```
 
-Despite a lot of implementation details, the above code says that if the scope is still open when the `close` method is called, the `shutdown` method is called. 
+Despite many implementation details, the above code says that the' shutdown' method is called if the scope is still open when the `close` method is called.
 
-As you can see, also the scope has an internal status that is checked to see if the scope is still open or not. The possible statuses are:
+As you can see, the scope also has an internal status check to see if it is still open. The possible statuses are:
 
 ```java
 // Java SDK
@@ -1162,7 +1162,7 @@ private static final int CLOSED   = 2;
 private volatile int state;
 ```
 
-A scope starts in the `OPEN` state at creation time since the variable that store the `state` is an `int` and `int`s initial value is always set to zero by the JVM. Then, if the `shutdown` method is called, the scope moves to the `SHUTDOWN` state:
+A scope starts in the `OPEN` state at creation time since the variable that stores the `state` is an `int`, and its initial value is always set to zero by the JVM. Then, if the `shutdown` method is called, the scope moves to the `SHUTDOWN` state:
 
 ```java
 // Java SDK
@@ -1194,7 +1194,7 @@ private boolean implShutdown() {
 }
 ```
 
-Finally, the `close()` method move the state of the scope to `CLOSE`, as we saw. The curious reader should have noticed that the scope uses `jdk.internal.misc.ThreadFlock` to manage threads forked by a scope. `ThreadFlock` are a low-level mechanism to manage correlated threads in the JDK. It's to low-level that is even hard to find documentation associated with them.
+Finally, the `close()` method moves the state of the scope to `CLOSE`, as we saw. The curious reader should have noticed that the scope uses `jdk.internal.misc.ThreadFlock` to manage threads forked by a scope. ThreadFlock is a low-level mechanism to manage correlated threads in the JDK. It's so low-level that it is even hard to find documentation associated with it.
 
 By the way, we said that calling the `shutdown` method stops all the pending subtasks forked by the scope. The above implementation shows how the method stops the task, calling the `interruptAll` private method. Here is its implementation of the core of the method:
 
@@ -1211,9 +1211,9 @@ private void implInterruptAll() {
 }
 ```
 
-As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are just interrupted by the scope. As you might remember, [interruption (or cancelling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well in the JDK. However, it's easy to create a computation that can't be interrupted when dealing with CPU-intensive tasks.
+As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are interrupted by the scope. As you might remember, [interruption (or canceling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well. However, creating a computation that can't be interrupted when dealing with CPU-intensive tasks is easy.
 
-Let's make an example. Imagine that we want to mine bitcoins while we're waiting for the repositories of a user. We can implement the `mineBitcoins` method as follows:
+Let's make an example. Imagine that we want to mine bitcoins while waiting for a user's repositories. We can implement the `mineBitcoins` method as follows:
 
 ```java
 record Bitcoin(String hash) {}
@@ -1245,7 +1245,7 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-We expect to get the repositories of the user before the bitcoin is mined and see the `race` function to interrupt the `mineBitcoin` computation. We already tested the `race` function, and we know it works as expected. However, the output of the execution is the following:
+We expect to get the user's repositories before the bitcoin is mined and see the `race` function to interrupt the `mineBitcoin` computation. We have already tested the `race` function and know it works as expected. However, the output of the execution is the following:
 
 ```
 08:49:09.118 [virtual-22] INFO GitHubApp -- Mining Bitcoin...
@@ -1254,9 +1254,9 @@ We expect to get the repositories of the user before the bitcoin is mined and se
 (infinite waiting)
 ```
 
-The `main` method executes forever, despite the `race` function should interrupt the `mineBitcoin` computation and all the good promises of structured concurrency. The problem is that the `mineBitcoin` computation doesn't have a  check point for the interruption status of its thread. Since interruption is a cooperative mechanism, the `mineBitcoin` computation doesn't know that the scope wants to stop it.
+The `main` method executes forever despite the `race` function interrupting the `mineBitcoin` computation and all the good promises of structured concurrency. The problem is that the `mineBitcoin` computation doesn't have a checkpoint for the interruption status of its thread. Since interruption is a cooperative mechanism, the `mineBitcoin` computation doesn't know that the scope wants to stop it.
 
-It's easy to fix the problem. We can add a check point in the `mineBitcoin` computation to check if the thread was interrupted. We can check if a thread was interrupted with the `isInterrupted` method on the `Thread` class:
+It's easy to fix the problem. We can add a checkpoint in the `mineBitcoin` computation to check if the thread was interrupted. We can check if a thread was interrupted with the `isInterrupted` method on the `Thread` class:
 
 ```java
 static Bitcoin mineBitcoinWithConsciousness() {
@@ -1287,7 +1287,7 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-If we run the code again, we can see from the output that the `mineBitcoinWithConsciousness` computation is interrupted after the user's repositories are retrieved and the `race` function semantic is respected:
+If we rerun the code, we can see from the output that the `mineBitcoinWithConsciousness` computation is interrupted after the user's repositories are retrieved and the `race` function semantic is respected:
 
 ```
 09:02:10.116 [virtual-22] INFO GitHubApp -- Mining Bitcoin...
@@ -1297,7 +1297,7 @@ If we run the code again, we can see from the output that the `mineBitcoinWithCo
 09:02:11.165 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-Calling the `shutdown` method prevents also the scope from forking new tasks. The `fork` method will not simply start any new task if the scope is in the `SHUTDOWN` state. Let's try it with a simple example:
+Calling the `shutdown` method prevents the scope from forking new tasks. The `fork` method will not start any new task if the scope is in the `SHUTDOWN` state. Let's try it with a simple example:
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
@@ -1313,7 +1313,7 @@ public static void main() throws ExecutionException, InterruptedException {
 }
 ```
 
-The execution of the above code will never print the message _"Hello, structured concurrency!"_ since the scope is in the `SHUTDOWN` state when the `fork` method is called. Last but not least, all the forked subtasks that were not completed before calling the `shutdown` method on the associated scope will never trigger the invocation of the `handleComplete` method that we saw previously.
+The execution of the above code will never print the message _"Hello, structured concurrency!"_ since the scope is in the `SHUTDOWN` state when the `fork` method is called. Last but not least, all the forked subtasks that were not completed before calling the `shutdown` method on the associated scope will never trigger the invocation of the `handleComplete` method we saw previously.
 
 ## 7. Parent-Child Relationship
 
