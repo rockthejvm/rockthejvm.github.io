@@ -803,9 +803,9 @@ Let's do it and deepen our knowledge of structured concurrency internal mechanis
 
 ## 5. Implementing a Custom Policy
 
-As we said, we want to implement a structured concurrency policy that mimics the behavior of the `race` function. The `race` function should execute two tasks concurrently and return the result of the first task that is completed, whether successful or not. Let's do it one step at a time.
+As we said, we want to implement a structured concurrency policy that mimics the behavior of the `race` function. **The `race` function should execute two tasks concurrently and return the result of the first task that is completed, whether successful or not**. Let's do it one step at a time.
 
-Implementing a custom policy always starts extending the `StructuredTaskScope` type. The base class implements all the mechanisms to synchronize the forked tasks. So, first of all, we need to extend the `StructuredTaskScope` type:
+Implementing a custom policy always starts extending the `StructuredTaskScope` type. The base class implements all the mechanisms to synchronize the forked tasks:
 
 ```java
 class ShutdownOnResult<T> extends StructuredTaskScope<T> {
@@ -831,11 +831,11 @@ Now, we can extract the result of the computation from the subtask. The `Subtask
 
 However, as we already saw in the previous examples, we can't call `get` if the computation fails; otherwise, the method will throw an `IllegalStateException`. On the other hand, if the computation succeeds, we can't call the `exception` method, which will have the same behavior.
 
-We need to know if the computation was completed successfully. The `Subtask` type comes with the method `State state()`, which returns the computation's state as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
+**We need to know if the computation was completed successfully**. The `Subtask` type comes with the property `State state()`, which returns the computation's state as an enum. The enum has three values: `UNAVAILABLE`, `SUCCESS`, and `FAILED`.
 
-After completing it successfully, A subtask will be in the `SUCCESS` state. The `get` method will return the result of the computation. If it completes with an exception, a subtask will be in the `FAILED` state. The `exception` method will return the exception thrown by the computation. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example, if we call the `get` method before having `join` the scope or if the subtask was canceled (we'll see in the following sections what does it mean).
+After completing it successfully, A subtask will be in the `SUCCESS` state. The `get` method will return the result of the computation. If it completes with an exception, a subtask will be in the `FAILED` state. The `exception` method will return the exception thrown. A subtask will be in the `UNAVAILABLE` state if the computation is not completed yet, for example, if we call the `get` method before having `join` the scope or if the subtask was canceled (we'll see in the following sections what does it mean).
 
-We need to use some state that can store the result of the first successful exception or the exception thrown by the first task that failed:
+We need to use some state that can store the result of the first successful result or the exception thrown by the first task that failed:
 
 ```java
 static class ShutdownOnResult<T> extends StructuredTaskScope<T> {
@@ -898,7 +898,7 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 }
 ```
 
-As we can see, the `handleComplete` method checks the state of the given `subtask` and sets the proper variable representing our state accordingly. After that, the method invokes the `shutdown` method. The `shutdown` method is the `StructuredTaskScope` type that stops all the pending subtasks forked by the scope. We will see how it works in detail in the following sections.
+As we can see, the `handleComplete` method checks the state of the given `subtask` and sets the proper variable representing our state accordingly. After that, the method invokes the `shutdown` method. The `shutdown` method comes from the `StructuredTaskScope`, and it stops all the pending subtasks forked by the scope. We will see how it works in detail in the following sections.
 
 Now that we have the first result or exception thrown by the forked tasks, we need a way to retrieve it. We can add a method to the `ShutdownOnResult` type that returns the result of the computation or throws the first exception thrown. The method looks like a mix between the `ShutdownOnFailure.throwIfFailed` and the `ShutdownOnSuccess.result` methods, and we called it `resultOrThrow`:
 
@@ -912,7 +912,7 @@ public T resultOrThrow() throws ExecutionException {
 }
 ```
 
-As you might notice, the first thing we do in the `resultOrThrow` method is the `ensureOwnerAndJoined` function. The method is `protected` and defined in the `StructuredTaskScope` class. It's a utility method that checks if the current thread is the owner of the scope and if the scope is joined. Checking if the thread calling the function is the owner of the scope is crucial since we want the scope to stay within the structured concurrency context. As we'll see in the next section, all the properties of structured concurrency hold if the structure of the code respects the structure of the concurrency, which means that the parent-children relationship should be respected. So, if the scope escapes the structured concurrency context, calling the method `ensureOwnerAndJoined` will throw a `java.lang.WrongThreadException` exception.
+As you might notice, the first thing we do in the `resultOrThrow` method is the `ensureOwnerAndJoined` function. The method is `protected` and defined in the `StructuredTaskScope` class. It's a utility method that **checks if the current thread is the owner of the scope and if the scope is joined**. Checking if the thread calling the function is the owner of the scope is crucial since we want the scope to stay within the structured concurrency context. As we'll see in the next section, all the properties of structured concurrency hold if the structure of the code respects the structure of the concurrency, which means that the parent-children relationship should be respected. So, if the scope escapes the structured concurrency context, calling the method `ensureOwnerAndJoined` will throw a `java.lang.WrongThreadException` exception.
 
 Finally, the complete code of the `ShutdownOnResult` policy is the following:
 
@@ -996,13 +996,15 @@ public static void main() throws ExecutionException, InterruptedException {
   final GitHubRepository gitHubRepository = new GitHubRepository();
   final FindRepositoriesByUserIdWithTimeout findRepositoriesWithTimeout =
       new FindRepositoriesByUserIdWithTimeout(gitHubRepository);
+  
   final List<Repository> repositories =
       findRepositoriesWithTimeout.findRepositories(new UserId(1L), Duration.ofMillis(500L));
+  
   LOGGER.info("GitHub user's repositories: {}", repositories);
 }
 ```
 
-As expected, the execution output is the following: The computation retrieving the repositories started but couldn't complete within the given interval, so it was canceled.
+As expected, the execution output is the following:
 
 ```
 09:13:08.611 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
@@ -1016,7 +1018,7 @@ Caused by: java.util.concurrent.TimeoutException: Timeout of PT0.5S reached
 	at java.base/java.lang.VirtualThread.run(VirtualThread.java:329)
 ```
 
-Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves the repositories successfully:
+The computation retrieving the repositories started but couldn't complete within the given interval, so it was canceled. Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves the repositories successfully:
 
 ```
 09:15:42.083 [virtual-20] INFO GitHubApp -- Finding repositories for user with id 'UserId[value=1]'
@@ -1024,7 +1026,7 @@ Whereas, if we increase the timeout to 1.5 seconds, the computation retrieves th
 09:15:43.122 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-Moreover, at the moment, we have all the building blocks to develop our `race` function, which returns the result of the first completed task, both successful and not. Here is the code:
+We have all the building blocks to develop our `race` function, which returns the result of the first completed task, both successful and not. Here is the code:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -1037,7 +1039,7 @@ static <T> T race(Callable<T> first, Callable<T> second)
 }
 ```
 
-We can implement the ' timeout ' function once we have the `race` function. The `timeout` function takes a task and a duration as input. The function returns the task result if the task is completed within the given duration. If the task isn't completed within the given duration, the function throws a `TimeoutException` exception. Here is the code:
+We can implement the `timeout` function once we have the `race` function. The `timeout` function takes a task and a duration as input. The function returns the task result if the task is completed within the given duration. If the task isn't completed within the given duration, the function throws a `TimeoutException` exception. Here is the code:
 
 ```java
 static <T> T timeout(Duration timeout, Callable<T> task)
@@ -1082,7 +1084,7 @@ static <T> T timeout2(Duration timeout, Callable<T> task)
 }
 ```
 
-By the way, we could also implement the `race` function through the `ShutdownOnResult` policy, so it was not a waste of time.
+By the way, we implemented the `race` function through the `ShutdownOnResult` policy, so it was not a waste of time.
 
 ## 6. Cancelling a Task
 
