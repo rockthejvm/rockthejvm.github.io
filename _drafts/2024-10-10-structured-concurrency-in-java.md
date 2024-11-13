@@ -65,7 +65,7 @@ We also define a logger that we'll use to print some helpful information to the 
 private static final Logger LOGGER = LoggerFactory.getLogger("GitHubApp");
 ```
 
-How can we retrieve the needed information? The GitHub API provides a RESTful interface that we can use to retrieve the information we need. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the user's repositories. From the first one, we retrieve the username and email address, while from the second one, we retrieve the repositories.
+How can we retrieve the needed information? The GitHub API provides a RESTful interface that we can use to retrieve the information we need. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the user's repositories. From the first one, we retrieve the username and email address; from the second, we retrieve the repositories.
 
 We don't need to implement the actual interaction with the GitHub API. So, we'll use a simplified version of the clients. Here are the interfaces we'll use:
 
@@ -264,7 +264,7 @@ public GitHubUser findGitHubUser(UserId userId) throws InterruptedException {
 
 As we said, despite being sequential and not optimized, the above computation has some excellent features.
 
-The computation has a clear scope, and the exception handling is straightforward. We can think about the calls to `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods as they were children of the `findGitHubUser` method. The language guarantees that when the `findGitHubUser` method completes, all its children's computations are completed, too. We cannot have children computation that outlive the parent one.
+The computation has a clear scope, and the exception handling is straightforward. We can think about the calls to the `findUserByIdPort.findUser(userId)` and `findRepositoriesByUserIdPort.findRepositories(userId)` methods as children of the `findGitHubUser` method. The language guarantees that when the `findGitHubUser` method completes, all its children's computations are completed, too. We cannot have children computations that outlive the parents.
 
 We cannot have resource starvation or execution leaks, either. Again, the stack structure of modern programming languages guarantees it. Every time a function terminates its execution, the runtime can clean up all the resources used by the computation. Moreover, if the `findUserByIdPort.findUser(userId)` method throws an exception, the `findRepositoriesByUserIdPort.findRepositories(userId)` method is not started.
 
@@ -790,7 +790,7 @@ public List<Repository> findRepositories(UserId userId)
 }
 ```
 
-If you're familiar with concurrency primitives, you might be asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the completed task, whether successful or not. ZIO and Cats Effects libraries provide such a primitive building block for creating the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't offer a way to implement the `race` function directly. We need to create our policy to implement it.
+If you're familiar with concurrency primitives, you might be asking how we can implement the `race` primitive. The `race` function should execute two tasks concurrently and return the result of the completed task, whether successful or not. ZIO and Cats Effects libraries provide a primitive building block for creating the `timeout` function. However, the available subclasses of the `StructuredTaskScope` don't offer a way to implement the `race` function directly. We need to create our policy to implement it.
 
 Let's do it and deepen our knowledge of structured concurrency internal mechanisms.
 
@@ -1075,7 +1075,7 @@ static <T> T timeout2(Duration timeout, Callable<T> task)
 }
 ```
 
-By the way, we were also able to implement the `race` function through the `ShutdownOnResult` policy, so it was not a waste of time after all.
+By the way, we could also implement the `race` function through the `ShutdownOnResult` policy, so it was not a waste of time.
 
 ## 6. Cancelling a Task
 
