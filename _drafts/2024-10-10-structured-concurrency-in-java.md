@@ -15,7 +15,7 @@ Concurrency is a beast that every developer must face at some point in their car
 
 ## 1. Setting up the project
 
-Java 23 was released in mid-September 2024, bringing many new features and improvements to the Java platform. We're interested in the third preview of structured concurrency, which is given a dedicated JEP: [JEP 480: Structured Concurrency (Third Preview)](https://openjdk.org/jeps/480). We must enable the preview features with a dedicated directive to the compiler. We'll use Maven as the build tool for our project. So, to allow structured concurrency in our project, we need to add the following configuration to the `pom.xml` file:
+Java 23 was released in mid-September 2024, bringing many new features and improvements to the Java platform. We're interested in the third preview of structured concurrency, which is given a dedicated JEP: [JEP 480: Structured Concurrency (Third Preview)](https://openjdk.org/jeps/480). We must enable the preview features with a directive to the compiler. We'll use Maven as the build tool for our project. So, to allow structured concurrency in our project, we need to add the following configuration to the `pom.xml` file:
 
 ```xml
 <build>
@@ -57,15 +57,15 @@ enum Visibility {
 }
 ```
 
-Unfortunately, Java still lacks value classes, so we need to use regular types to model data. Once [project Valhalla](https://openjdk.org/projects/valhalla/) is completed, the `UserName`, `Email`, and `Repository` classes will be replaced with proper value classes.
+Unfortunately, Java still lacks value classes, so we need to use regular types to model data. Once [project Valhalla](https://openjdk.org/projects/valhalla/) is completed, the `UserName`, and `Email` classes will be replaced with proper value classes.
 
-We also define a logger that we'll use to print some helpful information to the console:
+We also define a logger that we'll use to print some helpful information to the console. We choose to use the SLF4J logging facade with the Logback implementation. Here is the code:
 
 ```java
 private static final Logger LOGGER = LoggerFactory.getLogger("GitHubApp");
 ```
 
-How can we retrieve the needed information? The GitHub API provides a RESTful interface that we can use to retrieve the information we need. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the user's repositories. From the first one, we retrieve the username and email address; from the second, we retrieve the repositories.
+How can we retrieve the needed information? The GitHub API provides a RESTful interface that we can use to retrieve it. In detail, we need to perform two requests: one to retrieve the user information and one to retrieve the user's repositories. From the first one, we retrieve the username and email address; from the second, we retrieve the repositories.
 
 We don't need to implement the actual interaction with the GitHub API. So, we'll use a simplified version of the clients. Here are the interfaces we'll use:
 
@@ -83,6 +83,7 @@ The implementations of these interfaces are straightforward. They return fixed i
 
 ```java
 class GitHubRepository implements FindUserByIdPort, FindRepositoriesByUserIdPort {
+    
   @Override
   public User findUser(UserId userId) throws InterruptedException {
     LOGGER.info("Finding user with id '{}'", userId);
@@ -90,6 +91,7 @@ class GitHubRepository implements FindUserByIdPort, FindRepositoriesByUserIdPort
     LOGGER.info("User '{}' found", userId);
     return new User(userId, new UserName("rcardin"), new Email("rcardin@rockthejvm.com"));
   }
+  
   @Override
   public List<Repository> findRepositories(UserId userId) throws InterruptedException {
     LOGGER.info("Finding repositories for user with id '{}'", userId);
@@ -110,7 +112,7 @@ private static void delay(Duration duration) throws InterruptedException {
 
 We added a convenient `delay` method wrapping the common `Thread.sleep` method.
 
-As you might have noticed, we leave the `InterruptedException` unhandled, and we've not wrapped it into a `RuntimeException`. We did it on purpose. Leaving the `InterruptedException` in the signature signals that the thread can suspend (or be interrupted). We can call it a capability of the method. Although checked exceptions are not the best way to signal capabilities since they don't compose well, they're still the best approach in Java to implement an effect system in the language.
+As you might have noticed, we leave the `InterruptedException` unhandled, and we've not wrapped it into a `RuntimeException`. We did it on purpose. **Leaving the `InterruptedException` in the signature signals that the execution can interrupt** (or be suspended). We can call it a capability of the method. Although checked exceptions are not the best way to signal capabilities since they don't compose well, they're still the best approach in Java to implement an effect system in the language.
 
 Now that we have our clients, we can start writing the code to retrieve the necessary information. We'll start with the sequential version of the code.
 
@@ -120,8 +122,10 @@ interface FindGitHubUserUseCase {
 }
 
 class FindGitHubUserSequentialService implements FindGitHubUserUseCase {
+    
   private final FindUserByIdPort findUserByIdPort;
   private final FindRepositoriesByUserIdPort findRepositoriesByUserIdPort;
+  
   public FindGitHubUserSequentialService(
       FindUserByIdPort findUserByIdPort,
       FindRepositoriesByUserIdPort findRepositoriesByUserIdPort) {
@@ -142,17 +146,18 @@ Despite all the ceremony Java needs, the above code is quite simple. The tasks a
 
 Although the code could be more efficient, it has a lot of good features:
  1. It's easy to understand.
- 2. The computation has a clear scope. After the completion of the `findGitHubUser` method, the computation is done, and the JVM knows it can clean up all the resources used by the computation.
+ 2. The computation has a clear scope. After the completion of the `findGitHubUser` method, the computation is done, and the JVM knows it can clean up all the used resources used.
  3. The exception handling management is straightforward.
 
 Let's say the `findUserByIdPort.findUser(userId)` call throws an exception. The exception is propagated to the caller, and the `findRepositoriesByUserIdPort.findRepositories(userId)` will never start. All resources are well-spent in this case.
 
-We can now write the concurrent version of the code since the call to the two external APIs has no dependency. Here is the code:
+We can now write the concurrent version of the code:
 
 ```java
 @Override
 public GitHubUser findGitHubUser(UserId userId)
-    throws InterruptedException, ExecutionException {
+    throws InterruptedException, ExecutionException {\
+    
   try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
     var user = executor.submit(() -> findUserByIdPort.findUser(userId));
     var repositories =
@@ -162,18 +167,21 @@ public GitHubUser findGitHubUser(UserId userId)
 }
 ```
 
-We're using virtual threads in the above solution. Everybody is familiar with them since they have been available for a while. (However, if you're not familiar with virtual threads, please refer to our previous article [The Ultimate Guide to Java Virtual Threads](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/)).
+We're using virtual threads in the above solution. Everybody should be familiar with them since they have been available for a while. (However, if you're not familiar with virtual threads, please refer to our previous article [The Ultimate Guide to Java Virtual Threads](https://blog.rockthejvm.com/ultimate-guide-to-java-virtual-threads/)).
 
-The code is quite simple. We use an `ExecutorService` to create a dedicated virtual thread for every submitted execution. The result is a `Future<T>` object that we can use to retrieve the computation result with the `get` method. We added the `ExecutionException` to our method signature because we may try to retrieve a value from a `Future` that is completed exceptionally. We also need to add the exception to the interface method's signature.
+The code is quite simple. We use an `ExecutorService` to create a dedicated virtual thread for every submitted execution. The result is a `Future<T>` object that we can use to retrieve the computation result with the `get` method. We added the `ExecutionException` to our method signature because we may try to retrieve a value from a `Future` that completed exceptionally.
 
-We can try to define a `main` method to test the code we've written so far. Here is the code:
+We can try to define a `main` method to test the code we've written so far:
 
 ```java
 public static void main(String[] args) throws ExecutionException, InterruptedException {
+    
   final GitHubRepository gitHubRepository = new GitHubRepository();
   FindGitHubUserConcurrentService service =
       new FindGitHubUserConcurrentService(gitHubRepository, gitHubRepository);
+  
   final GitHubUser gitHubUser = service.findGitHubUser(new UserId(1L));
+  
   LOGGER.info("GitHub user: {}", gitHubUser);
 }
 ```
@@ -190,7 +198,7 @@ The output of the execution of the above code is the following:
 
 The output is what we expect. Both threads start together, and their execution interleaves. After about 0.5 seconds, the user is found, and after about 1 second, the repositories are found. So far, so good.
 
-What if the `findUser` method throws an exception? The network may have a glitch, or the GitHub API is down. Let's simulate it by throwing an exception in the `findUser` method. Here is the code:
+What if the `findUser` method throws an exception? The network may have a glitch, or the GitHub API is down. Let's simulate it by throwing an exception in the `findUser` method:
 
 ```java
 @Override
@@ -217,11 +225,12 @@ Caused by: java.lang.RuntimeException: Socket timeout
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp$FindGitHubUserConcurrentService.lambda$findGitHubUser$0(GitHubApp.java:112)
 ```
 
-We should start to understand the problem with plain-old concurrency. The exception is thrown, but the `findRepositories` method is still started and executed till completion, which is a problem because we need to spend our resources wisely. We call such a situation a thread leak. However, it can be worse. Imagine, for example, that the thread running the `ExecutorService` throws an exception after submitting the two computations. Here is the code:
+We should start to understand the problem with plain-old concurrency. **The exception is thrown, but the `findRepositories` method is still started and executed till completion**, which is a problem because we need to spend our resources wisely. **We call such a situation a thread leak**. However, it can be worse. Imagine, for example, that the two subtasks execute successfully but thread running the `ExecutorService` throws an exception after submitting them:
 
 ```java
 @Override
 public GitHubUser findGitHubUser(UserId userId) throws InterruptedException, ExecutionException {
+    
   try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
     var user = executor.submit(() -> findUserByIdPort.findUser(userId));
     var repositories =
@@ -243,7 +252,7 @@ Exception in thread "main" java.lang.RuntimeException: Something went wrong
 	at virtual.threads.playground/in.rcard.virtual.threads.GitHubApp.main(GitHubApp.java:136)
 ```
 
-Even if the `main` thread went in error, both the executions of the `findUser` and `findRepositories` methods didn't stop and complete their execution. Again, we found a thread leak. We expected that the `main` thread should be the root of the computation, the parent thread, and if it goes in error, all the computations started from it, aka its children thread, should stop. However, using plain-old concurrency, this is different. We can't express any association within threads.
+Even if the `findGitHubUser` went in error, both the executions of the `findUser` and `findRepositories` methods didn't stop and complete their execution. Again, we found a thread leak. We aim that the thread executing the `findGitHubUser` method should be the root of the computation, the parent thread, and if it goes in error, all the computations started from it, aka its children threads, should stop. However, using plain-old concurrency, it doesn't happen. We can't express any association within threads.
 
 We can implement some policy to fix the above problem. However, it takes work. We must keep track of all the threads the `ExecutorService` started and stop them when the parent thread goes in error. It's a lot of work, and it's error-prone. We can't rely on the JVM to do it for us. We need to do it manually.
 
