@@ -4,7 +4,7 @@ date: 2024-10-10
 header:
     image: "https://res.cloudinary.com/dkoypjlgr/image/upload/f_auto,q_auto:good,c_auto,w_1200,h_300,g_auto,fl_progressive/v1715952116/blog_cover_large_phe6ch.jpg"
 tags: [java, loom, structured-concurrency]
-excerpt: ""
+excerpt: "Concurrency is a complex topic that requires a deep understanding of the underlying mechanisms of the programming language and the runtime environment. Fortunately, Project Loom is here to help. In this article, we will explore the concept of structured concurrency and how it simplifies writing concurrent code in Java."
 toc: true
 toc_label: "In this article"
 ---
