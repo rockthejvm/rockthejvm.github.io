@@ -1088,7 +1088,7 @@ By the way, we implemented the `race` function through the `ShutdownOnResult` po
 
 ## 6. Cancelling a Task
 
-In the previous section, we saw that the `StructuredTaskScope` type comes with a `shutdown` method. We called the method in the `handleComplete` method of the `ShutdownOnResult` policy to stop the computation as soon as the first task was completed successfully or failed. The `shutdown` method stops all the pending subtasks forked by the scope.
+In the previous section, we saw that the `StructuredTaskScope` type comes with a `shutdown` method. We called the method in the `handleComplete` method of the `ShutdownOnResult` policy to stop the computation as soon as the first task was completed successfully or failed. **The `shutdown` method stops all the pending subtasks forked by the scope**.
 
 All the available policies of the `StructuredTaskScope` call the `shutdown` method in case of error or success. The `ShudownOnFailure` policy, as the name suggests, calls the `shutdown` method in case of an error in one of the forked computations:
 
@@ -1132,7 +1132,7 @@ protected void handleComplete(Subtask<? extends T> subtask) {
 
 As you should remember, failures accumulate and don't force the scope to shut down.
 
-Last but not least, if the policy hasn't called the `shutdown` method and the execution of the scope is completed, the `shutdown` method is called by the `close` method:
+Last but not least, if the policy hasn't called the `shutdown` before the scope's execution completion, the `shutdown` method is called by the `close` method:
 
 ```java
 // Java SDK
@@ -1157,9 +1157,7 @@ public void close() {
 }
 ```
 
-Despite many implementation details, the above code says that the' shutdown' method is called if the scope is still open when the `close` method is called.
-
-As you can see, the scope also has an internal status check to see if it is still open. The possible statuses are:
+Despite many implementation details, the above code says that the `shutdown` method is called if the scope is still open when the `close` method is called. As you can see, the scope has an internal status, and the possible statuses are:
 
 ```java
 // Java SDK
@@ -1203,7 +1201,7 @@ private boolean implShutdown() {
 }
 ```
 
-Finally, the `close()` method moves the state of the scope to `CLOSE`, as we saw. The curious reader should have noticed that the scope uses `jdk.internal.misc.ThreadFlock` to manage threads forked by a scope. ThreadFlock is a low-level mechanism to manage correlated threads in the JDK. It's so low-level that it is even hard to find documentation associated with it.
+Finally, the `close()` method moves the state of the scope to `CLOSE`, as we saw. The curious reader should have noticed that the scope uses `jdk.internal.misc.ThreadFlock` to manage threads forked by a scope. `ThreadFlock` is a low-level mechanism to manage correlated threads in the JDK. It's so low-level that it is even hard to find documentation associated with it.
 
 By the way, we said that calling the `shutdown` method stops all the pending subtasks forked by the scope. The above implementation shows how the method stops the task, calling the `interruptAll` private method. Here is its implementation of the core of the method:
 
@@ -1220,7 +1218,7 @@ private void implInterruptAll() {
 }
 ```
 
-As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are interrupted by the scope. As you might remember, [interruption (or canceling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well. However, creating a computation that can't be interrupted when dealing with CPU-intensive tasks is easy.
+As we can see, there is no magic under the stop of uncompleted computation. The (virtual) threads owning the tasks are interrupted by the scope. As you might remember, [interruption (or canceling) is a cooperative mechanism in Java](https://rockthejvm.com/articles/the-ultimate-guide-to-java-virtual-threads/#the-scheduler-and-cooperative-scheduling). **A thread is eligible for interruption if it calls a method that throws an `InterruptedException` exception or if it checks the interruption status of the thread**. Luckily, almost any blocking operation in the JDK can be interrupted, so the interruption mechanism works well. However, creating a computation that can't be interrupted when dealing with CPU-intensive tasks is easy.
 
 Let's make an example. Imagine we want to mine bitcoins while waiting for a user's repositories. We can implement the `mineBitcoins` method as follows:
 
@@ -1237,6 +1235,8 @@ static Bitcoin mineBitcoin() {
   return new Bitcoin("bitcoin-hash");
 }
 private static boolean alwaysTrue() {
+  return true;
+}
 ```
 
 Now, we can make it race with a thread that retrieves the repositories of a user:
@@ -1268,18 +1268,20 @@ The `main` method executes forever despite the `race` function interrupting the 
 It's easy to fix the problem. We can add a checkpoint in the `mineBitcoin` computation to check if the thread was interrupted. We can check if a thread was interrupted with the `isInterrupted` method on the `Thread` class:
 
 ```java
-static Bitcoin mineBitcoinWithConsciousness() {
+static Bitcoin mineBitcoinWithConsciousness() throws InterruptedException  {
   LOGGER.info("Mining Bitcoin...");
   while (alwaysTrue()) {
     if (Thread.currentThread().isInterrupted()) {
       LOGGER.info("Bitcoin mining interrupted");
-      return null;
+      throw new InterruptedException();
     }
   }
   LOGGER.info("Bitcoin mined!");
   return new Bitcoin("bitcoin-hash");
 }
 ```
+
+It's always a good idea to forward interruption to the parent thread throwing an `InterruptedException` exception. Moreover, adding a the `InterruptedException` exception to the method signature signals to the caller that the computation can be interrupted.
 
 Now, we can retry the `race` function with the `mineBitcoinWithConsciousness` computation:
 
@@ -1306,7 +1308,7 @@ If we rerun the code, we can see from the output that the `mineBitcoinWithConsci
 09:02:11.165 [main] INFO GitHubApp -- GitHub user's repositories: [Repository[name=raise4s, visibility=PUBLIC, uri=https://github.com/rcardin/raise4s], Repository[name=sus4s, visibility=PUBLIC, uri=https://github.com/rcardin/sus4s]]
 ```
 
-Calling the `shutdown` method prevents the scope from forking new tasks. The `fork` method will not start any new task if the scope is in the `SHUTDOWN` state. Let's try it with a simple example:
+**Calling the `shutdown` method prevents the scope from forking new tasks**. The `fork` method will not start any new task if the scope is in the `SHUTDOWN` state. Let's try it with a simple example:
 
 ```java
 public static void main() throws ExecutionException, InterruptedException {
