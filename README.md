@@ -1,6 +1,6 @@
 # The archived repository of the Rock the JVM blog
 
-**This repository is archived. Please see the [Rock the JVM site repository] which now contains the blog as well.**
+**This repository is archived. Please see the [Rock the JVM site repository](https://github.com/rockthejvm/rockthejvm-site) which now contains the blog as well.**
 
 The [Rock the JVM blog](https://blog.rockthejvm.com) is a place for in-depth coverage of topics in the Scala ecosystem, including features and tricks related to the Scala language, Akka, functional programming libraries like Cats, effect systems (Cats Effect, ZIO), data engineering with Apache Spark and Flink, streaming with Pulsar, Kafka and more.
 
