@@ -1328,7 +1328,7 @@ The execution of the above code will never print the message _"Hello, structured
 
 ## 7. Parent-Children Relationship
 
-We need to discuss the relationship between parent and child tasks in a structured concurrency context, one of its main features. However, we need a more articulated example to demonstrate how structured concurrency in Java manages the parent-child relationship.
+We need to discuss the relationship between parent and children tasks in a structured concurrency context, one of its main features. However, we need a more articulated example to demonstrate how structured concurrency in Java manages the parent-children relationship.
 
 Imagine we now want to retrieve the information of two GitHub users concurrently. Moreover, we want to retrieve them at most a given amount of time or give up otherwise. The signature of the new use case method is the following:
 
@@ -1393,7 +1393,7 @@ First, we saw that the four leaves of the above tree started concurrently, with 
 
 Again, enjoy that the above code does not have a thread leak. The scopes stopped all the forked tasks within four nested levels of computations.
 
-How does the whole thing work? As we saw in the previous section, the core mechanism is thread interruption. The `race` function creates the outer scope inside the `timeout` function. The scope is a `ShutdownOnResult`, so it waits for the first successful result. The scope is waiting on the `scope.join()` statement:
+How does the whole thing work? As we saw in the previous section, **the core mechanism is thread interruption**. The `race` function creates the outer scope inside the `timeout` function. The scope is a `ShutdownOnResult`, so it waits for the first result. The scope is waiting on the `scope.join()` statement:
 
 ```java
 static <T> T race(Callable<T> first, Callable<T> second)
@@ -1519,11 +1519,11 @@ The execution of the `par` method is waiting in the `ShutdownOnFailure.join` met
 
 For the sake of simplicity, the diagram doesn't show threads retrieving the information from GitHub for the second user, but it gives a nice picture of what happens in the code.
 
-The above example introduced another piece in the structured concurrency puzzle in Loom: the `StructuredTaskScope.close` method. As we can see, it is central to assuring the contract between parents and children's tasks. It's a guard in case of exceptions thrown during the execution of a scope, like the `InterruptedException` exception in the above example. Moreover, if the parent scope reaches its intended result, it's the last line of defense to ensure that all the children's tasks that are not needed anymore are interrupted. Even though a custom implementation forgets to call the `shutdown` method on the scope, the `close` method will do it for us.
+The above example introduced another piece in the structured concurrency puzzle in Loom: the `StructuredTaskScope.close` method. As we can see, it is central to force the contract between parent and children tasks. **It's a guard in case of exceptions thrown during the execution of a scope**, like the `InterruptedException` exception in the above example. Moreover, if the parent scope reaches its intended result, it's the last line of defense to ensure that all the children tasks that are not needed anymore are interrupted. Even though a custom implementation of a shutdown policy forgets to call the `shutdown` method on the scope, the `close` method will do it for us.
 
 ## 8. Conclusion
 
-We finally reach the conclusions of the article. We introduce what structured concurrency is and what its benefits are. We saw it's hard to avoid thread leaks using the traditional Java concurrency API. Fortunately, Project Loom is available in version 19 of Java. The project introduced virtual threads and structured concurrency. We saw the different shutdown policies that the JDK brings, and we implemented one custom policy to dive deep into the main concepts of structured concurrency. We were able to implement structured concurrency primitives that we find in many libraries like Scala ZIO and Cats Effects. Finally, we saw the parent-child relationship in structured concurrency in action and how the `close` method is the last line of defense to ensure that all the children's tasks that are not needed anymore are interrupted.
+We finally reach the conclusions of the article. We introduced what structured concurrency is and what its benefits are. We saw it's hard to avoid thread leaks using the traditional Java concurrency API. Fortunately, Project Loom is available in version 19 of Java. The project introduced virtual threads and structured concurrency. We saw the different shutdown policies that the JDK brings, and we implemented one custom policy to dive deep into the main concepts of structured concurrency. We were able to implement structured concurrency primitives that we find in many libraries like Scala ZIO and Cats Effects. Finally, we saw the parent-children relationship in structured concurrency in action and how the `close` method is the last line of defense to ensure that all the children tasks that are not needed anymore are interrupted.
 
 I hope you enjoyed the article and learned something new. Thanks for reading, and I look forward to the next one!
 
